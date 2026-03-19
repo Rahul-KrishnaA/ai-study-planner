@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #F4F4F8;
+  }
+
+  html.dark {
+    background-color: #0a0a14;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Remove default range slider styles */
+  input[type='range'] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 9999px;
+    background: #e5e7eb;
+    outline: none;
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #6C47FF;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(108, 71, 255, 0.4);
+  }
+
+  input[type='range']::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #6C47FF;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 1px 4px rgba(108, 71, 255, 0.4);
+  }
+}
+
+@layer utilities {
+  .active\:scale-98:active {
+    transform: scale(0.98);
+  }
+}
