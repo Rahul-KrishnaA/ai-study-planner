@@ -47,7 +47,7 @@ export function OnboardingPage() {
     setProfile(profile);
 
     try {
-      const plan = await generateStudyPlan(profile, user.id);
+      const plan = await generateStudyPlan(profile);
       setPlan(plan);
     } catch {
       // generateStudyPlan already falls back to local plan

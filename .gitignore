@@ -5,3 +5,8 @@ dist
 *.log
 CLAUDE.md
 .claude/
+.vite/
+backend/study_planner.db
+backend/venv/
+__pycache__/
+*.pyc

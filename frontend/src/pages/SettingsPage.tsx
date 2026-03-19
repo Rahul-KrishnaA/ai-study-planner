@@ -88,7 +88,7 @@ export function SettingsPage() {
     setRegenerating(true);
     setRegenStatus('idle');
     try {
-      const newPlan = await generateStudyPlan(profile, user.id);
+      const newPlan = await generateStudyPlan(profile, settings.lmStudioUrl);
       setPlan(newPlan);
       setRegenStatus('success');
     } catch {

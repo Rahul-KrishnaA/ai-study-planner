@@ -4,8 +4,7 @@ import {
   login as authLogin,
   register as authRegister,
   logout as authLogout,
-  loadSession,
-  getUserById,
+  loadSessionUser,
   updateUserName,
   changePassword,
 } from '../services/auth';
@@ -27,23 +26,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Rehydrate session on mount
+  // Rehydrate session on mount via backend
   useEffect(() => {
-    const session = loadSession();
-    if (session) {
-      const found = getUserById(session.userId);
-      if (found) setUser(found);
-    }
-    setLoading(false);
+    loadSessionUser()
+      .then((found) => {
+        if (found) setUser(found);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const { user: u } = await authLogin(email, password);
+    const u = await authLogin(email, password);
     setUser(u);
   }, []);
 
   const register = useCallback(async (name: string, email: string, password: string) => {
-    const { user: u } = await authRegister(name, email, password);
+    const u = await authRegister(name, email, password);
     setUser(u);
   }, []);
 
@@ -52,19 +50,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  const updateName = useCallback(async (name: string) => {
-    if (!user) return;
-    await updateUserName(user.id, name);
-    setUser((prev) => prev ? { ...prev, name } : prev);
-  }, [user]);
+  const updateName = useCallback(
+    async (name: string) => {
+      if (!user) return;
+      await updateUserName(user.id, name);
+      setUser((prev) => (prev ? { ...prev, name } : prev));
+    },
+    [user],
+  );
 
-  const changeUserPassword = useCallback(async (current: string, next: string) => {
-    if (!user) return;
-    await changePassword(user.id, current, next);
-  }, [user]);
+  const changeUserPassword = useCallback(
+    async (current: string, next: string) => {
+      if (!user) return;
+      await changePassword(user.id, current, next);
+    },
+    [user],
+  );
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateName, changeUserPassword }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, register, logout, updateName, changeUserPassword }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -28,7 +28,8 @@ function LoadingScreen() {
 
 // Inner routes — only rendered after auth is resolved and user is set
 function AuthenticatedApp() {
-  const { profile, plan } = useApp();
+  const { profile, plan, dataLoading } = useApp();
+  if (dataLoading) return <LoadingScreen />;
   const hasOnboarded = !!(profile && plan);
 
   return (

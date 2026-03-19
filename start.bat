@@ -1,11 +1,12 @@
 @echo off
-cd /d "%~dp0"
+echo Starting backend in PowerShell...
+start "Backend" powershell -NoExit -NoProfile -ExecutionPolicy Bypass -Command "cd '%~dp0backend'; if (-not (Test-Path venv)) { python -m venv venv }; venv\Scripts\pip install -r requirements.txt --quiet; Write-Host 'Backend running on http://127.0.0.1:8000'; venv\Scripts\uvicorn main:app --reload --host 127.0.0.1 --port 8000"
 
+echo Starting frontend...
+cd /d "%~dp0frontend"
 if not exist node_modules (
-    echo Installing dependencies...
+    echo Installing frontend dependencies...
     npm install
 )
-
-echo Starting AI Study Planner...
 echo Open http://localhost:5173 in your browser
 npm run dev
