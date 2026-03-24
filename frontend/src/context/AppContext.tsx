@@ -30,7 +30,6 @@ interface AppContextValue {
 }
 
 const defaultSettings: AppSettings = {
-  lmStudioUrl: 'http://127.0.0.1:1240',
   darkMode: false,
   remindersEnabled: false,
   reminderMinutesBefore: 15,

@@ -5,7 +5,6 @@ import { Card } from '../components/Card';
 import { ProgressBar } from '../components/ProgressBar';
 import { SubjectAvatar, getSubjectColor } from '../components/SubjectAvatar';
 import { useApp } from '../context/AppContext';
-import { useAuth } from '../context/AuthContext';
 import { generateInsights } from '../services/lmstudio';
 
 const DAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -37,7 +36,6 @@ function getMonthDates(): string[] {
 
 export function StatsPage() {
   const { sessions, profile, plan } = useApp();
-  const { user } = useAuth();
   const [filter, setFilter] = useState<'week' | 'month'>('week');
   const [insights, setInsights] = useState<{ type: string; title: string; body: string }[]>([]);
   const [loadingInsights, setLoadingInsights] = useState(false);
@@ -80,7 +78,7 @@ export function StatsPage() {
     if (!profile || filtered.length === 0) return;
     setLoadingInsights(true);
     const sessionData = filtered.map((s) => ({ subject: s.subject, duration: s.duration, date: s.date }));
-    generateInsights(profile, sessionData, user?.id)
+    generateInsights(profile, sessionData)
       .then(setInsights)
       .finally(() => setLoadingInsights(false));
   }, [filter]);

@@ -1,9 +1,11 @@
 import json
+import os
 import re
 import uuid
 from typing import Optional
 
-import httpx
+from google import genai
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -19,18 +21,28 @@ from auth_utils import (
 from database import Base, engine, get_db
 from models import User, UserData
 
+from pathlib import Path
+load_dotenv(Path(__file__).parent / ".env")
+
 # ─── App setup ────────────────────────────────────────────────────────────────
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI Study Planner API")
 
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
+
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ─── Gemini AI setup ─────────────────────────────────────────────────────────
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 security = HTTPBearer()
 
@@ -103,13 +115,11 @@ class StreakRequest(BaseModel):
 
 class LMGeneratePlanRequest(BaseModel):
     profile: dict
-    lm_studio_url: str = "http://127.0.0.1:1240"
 
 
 class LMGenerateInsightsRequest(BaseModel):
     profile: dict
     sessions: list
-    lm_studio_url: str = "http://127.0.0.1:1240"
 
 
 # ─── Auth endpoints ───────────────────────────────────────────────────────────
@@ -301,69 +311,56 @@ def reset_user_data(
     return {"ok": True}
 
 
-# ─── LM Studio proxy ──────────────────────────────────────────────────────────
+# ─── Gemini AI endpoints ─────────────────────────────────────────────────────
 @app.post("/lm/generate-plan")
 async def lm_generate_plan(
     req: LMGeneratePlanRequest,
     current_user: User = Depends(get_current_user),
 ):
+    if not gemini_client:
+        raise HTTPException(status_code=503, detail="Gemini API key not configured")
+
     profile = req.profile
-    base_url = req.lm_studio_url.rstrip("/")
 
     subject_list = ", ".join(
         f"{d['name']} (exam: {d['examDate']})" if d.get("examDate") else d["name"]
         for d in profile.get("subjectDetails", [])
     ) or ", ".join(profile.get("subjects", []))
 
-    system_prompt = (
-        'You are an expert study planner AI. Generate a prioritized weekly study schedule in JSON format only. '
-        'Subjects with closer exam dates must receive more sessions. No explanation, no markdown, just valid JSON:\n'
-        '{\n'
-        '  "weeklySchedule": [{"day":"Monday","sessions":[{"id":"mon-0","subject":"string","chapter":"string","startTime":"HH:MM","endTime":"HH:MM","color":"#hex"}]}],\n'
-        '  "insights": [{"type":"tip","title":"string","body":"string"}],\n'
-        '  "subjectProgress": [{"subject":"string","percentDone":0}],\n'
-        '  "generatedAt": "ISO string"\n'
-        '}'
-    )
-
-    user_prompt = (
+    prompt = (
         f"Create a weekly study plan for {profile.get('name')} studying {profile.get('studyField')}.\n"
         f"Subjects with deadlines: {subject_list}.\n"
         f"Preferred time: {profile.get('preferredTime')}. Daily goal: {profile.get('dailyGoalHours')}h.\n"
         f"Institution: {profile.get('institution', 'not specified')}. Semester: {profile.get('semester', 'not specified')}.\n"
         "Colors to use per subject: #6C47FF, #FF6B6B, #4ECDC4, #45B7D1, #96CEB4, #F4A261, #DDA0DD.\n"
-        "Include all 7 days. Prioritize subjects with closer exams. Generate 2-3 insights. Return ONLY the JSON."
+        "Include all 7 days (Monday-Sunday). 2-3 sessions per day. Keep chapter names SHORT (max 5 words).\n"
+        "Prioritize subjects with closer exams. Generate 2 insights.\n\n"
+        "Return JSON with this structure:\n"
+        '{"weeklySchedule":[{"day":"Monday","sessions":[{"id":"mon-0","subject":"Math","chapter":"Ch 1","startTime":"09:00","endTime":"10:00","color":"#6C47FF"}]}],'
+        '"insights":[{"type":"tip","title":"short title","body":"short tip"}],'
+        '"subjectProgress":[{"subject":"Math","percentDone":0}],'
+        '"generatedAt":"2024-01-01T00:00:00Z"}'
     )
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{base_url}/v1/chat/completions",
-                json={
-                    "model": "local-model",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": 4096,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
+        response = gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={
+                "temperature": 0.7,
+                "max_output_tokens": 8192,
+                "response_mime_type": "application/json",
+            },
+        )
 
-        json_match = re.search(r"\{[\s\S]*\}", content)
-        if not json_match:
-            raise ValueError("No JSON in response")
-
-        plan = json.loads(json_match.group())
+        plan = json.loads(response.text)
         if not plan.get("weeklySchedule"):
             raise ValueError("Invalid plan structure")
         return plan
 
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"LM Studio unavailable: {e}")
+        print(f"[GEMINI ERROR] {e}")
+        raise HTTPException(status_code=503, detail=f"Gemini API error: {e}")
 
 
 @app.post("/lm/generate-insights")
@@ -371,51 +368,56 @@ async def lm_generate_insights(
     req: LMGenerateInsightsRequest,
     current_user: User = Depends(get_current_user),
 ):
+    if not gemini_client:
+        raise HTTPException(status_code=503, detail="Gemini API key not configured")
+
     profile = req.profile
     sessions = req.sessions
-    base_url = req.lm_studio_url.rstrip("/")
 
     total_hours = sum(s.get("duration", 0) for s in sessions) / 60
     subject_map: dict[str, float] = {}
     for s in sessions:
         subject_map[s["subject"]] = subject_map.get(s["subject"], 0) + s.get("duration", 0)
 
-    system_prompt = (
-        "You are a study analytics AI. Generate 3 actionable insights as JSON array only:\n"
-        '[{"type":"tip","title":"string","body":"string"}]'
-    )
-    user_prompt = (
+    prompt = (
         f"Student: {profile.get('name')}, studying {profile.get('studyField')}.\n"
-        f"Total hours: {total_hours:.1f}. By subject: {', '.join(f'{s}: {(m/60):.1f}h' for s, m in subject_map.items())}.\n"
+        f"Total hours studied: {total_hours:.1f}. By subject: {', '.join(f'{s}: {(m/60):.1f}h' for s, m in subject_map.items())}.\n"
         f"Preferred time: {profile.get('preferredTime')}. Daily goal: {profile.get('dailyGoalHours')}h.\n"
-        "Return ONLY the JSON array."
+        "Generate 3 actionable study insights.\n\n"
+        "Return ONLY a valid JSON array, no markdown, no explanation:\n"
+        '[{"type":"tip","title":"string","body":"string"}]'
     )
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                f"{base_url}/v1/chat/completions",
-                json={
-                    "model": "local-model",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": 1024,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
+        response = gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={
+                "temperature": 0.7,
+                "max_output_tokens": 1024,
+                "response_mime_type": "application/json",
+            },
+        )
 
-        json_match = re.search(r"\[[\s\S]*\]", content)
-        if not json_match:
-            raise ValueError("No JSON array")
-        return json.loads(json_match.group())
+        return json.loads(response.text)
 
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"LM Studio unavailable: {e}")
+        raise HTTPException(status_code=503, detail=f"Gemini API error: {e}")
+
+
+@app.get("/lm/test")
+async def lm_test(current_user: User = Depends(get_current_user)):
+    if not gemini_client:
+        raise HTTPException(status_code=503, detail="Gemini API key not configured")
+    try:
+        gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents="Say 'ok'",
+            config={"max_output_tokens": 10},
+        )
+        return {"status": "connected", "model": "gemini-2.5-flash"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Gemini API error: {e}")
 
 
 @app.get("/health")

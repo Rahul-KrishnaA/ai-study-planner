@@ -6,13 +6,11 @@ import { Button } from '../components/Button';
 import { ProgressBar } from '../components/ProgressBar';
 import { SubjectAvatar, getSubjectColor } from '../components/SubjectAvatar';
 import { useApp } from '../context/AppContext';
-import { useAuth } from '../context/AuthContext';
 import { generateStudyPlan } from '../services/lmstudio';
 import { daysUntilExam } from '../services/scheduler';
 import type { SubjectDetail } from '../types';
 
 export function SubjectsPage() {
-  const { user } = useAuth();
   const { profile, plan, setProfile, setPlan, updateSubjectProgress } = useApp();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -51,7 +49,7 @@ export function SubjectsPage() {
 
     setRegenerating(true);
     try {
-      const newPlan = await generateStudyPlan(updatedProfile, user?.id);
+      const newPlan = await generateStudyPlan(updatedProfile);
       setPlan(newPlan);
     } catch { /* keep old plan */ }
     setRegenerating(false);

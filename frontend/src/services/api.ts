@@ -1,6 +1,6 @@
 import type { UserProfile, StudyPlan, TrackedSession, AppSettings } from '../types';
 
-export const API_BASE = 'http://127.0.0.1:8000';
+export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
 const TOKEN_KEY = 'sp_token';
 
 // ─── Token helpers ────────────────────────────────────────────────────────────
@@ -167,21 +167,23 @@ export async function apiResetData(): Promise<void> {
 // ─── LM Studio proxy ──────────────────────────────────────────────────────────
 export async function apiGeneratePlan(
   profile: UserProfile,
-  lmStudioUrl: string,
 ): Promise<StudyPlan> {
   return request<StudyPlan>('/lm/generate-plan', {
     method: 'POST',
-    body: JSON.stringify({ profile, lm_studio_url: lmStudioUrl }),
+    body: JSON.stringify({ profile }),
   });
 }
 
 export async function apiGenerateInsights(
   profile: UserProfile,
   sessions: { subject: string; duration: number; date: string }[],
-  lmStudioUrl: string,
 ): Promise<{ type: string; title: string; body: string }[]> {
   return request('/lm/generate-insights', {
     method: 'POST',
-    body: JSON.stringify({ profile, sessions, lm_studio_url: lmStudioUrl }),
+    body: JSON.stringify({ profile, sessions }),
   });
+}
+
+export async function apiTestLmConnection(): Promise<{ status: string; model: string }> {
+  return request('/lm/test');
 }

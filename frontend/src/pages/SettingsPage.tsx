@@ -19,7 +19,6 @@ export function SettingsPage() {
   const [name, setName] = useState(user?.name ?? '');
   const [institution, setInstitution] = useState(profile?.institution ?? '');
   const [semester, setSemester] = useState(profile?.semester ?? '');
-  const [lmUrl, setLmUrl] = useState(settings.lmStudioUrl);
   const [nameSaved, setNameSaved] = useState(false);
 
   // Password change
@@ -33,7 +32,6 @@ export function SettingsPage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [regenStatus, setRegenStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [urlSaveStatus, setUrlSaveStatus] = useState<'idle' | 'checking' | 'connected' | 'failed'>('idle');
   const notifPermission = getNotificationPermission();
 
   async function handleSaveProfile() {
@@ -70,25 +68,12 @@ export function SettingsPage() {
     updateSettings({ remindersEnabled: !settings.remindersEnabled });
   }
 
-  async function handleSaveLmUrl() {
-    const url = lmUrl.trim() || 'http://127.0.0.1:1240';
-    updateSettings({ lmStudioUrl: url });
-    setUrlSaveStatus('checking');
-    try {
-      const res = await fetch(`${url}/v1/models`, { signal: AbortSignal.timeout(5000) });
-      setUrlSaveStatus(res.ok ? 'connected' : 'failed');
-    } catch {
-      setUrlSaveStatus('failed');
-    }
-    setTimeout(() => setUrlSaveStatus('idle'), 4000);
-  }
-
   async function handleRegenerate() {
     if (!profile || !user) return;
     setRegenerating(true);
     setRegenStatus('idle');
     try {
-      const newPlan = await generateStudyPlan(profile, settings.lmStudioUrl);
+      const newPlan = await generateStudyPlan(profile);
       setPlan(newPlan);
       setRegenStatus('success');
     } catch {
@@ -177,32 +162,19 @@ export function SettingsPage() {
           )}
         </Card>
 
-        {/* LM Studio */}
+        {/* AI Engine */}
         <Card className="mb-4">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">LM Studio</p>
-          <Input label="Server URL" value={lmUrl} onChange={(e) => setLmUrl(e.target.value)} placeholder="http://127.0.0.1:1240" />
-          <p className="text-xs text-gray-400 mt-1.5">LM Studio must be running locally with Local Server enabled.</p>
-          {urlSaveStatus === 'connected' && <p className="text-xs text-green-500 mt-1">Connected successfully!</p>}
-          {urlSaveStatus === 'failed' && (
-            <div className="mt-1">
-              <p className="text-xs text-red-400">Could not connect. Check:</p>
-              <ul className="text-xs text-red-400 list-disc ml-4 mt-0.5 space-y-0.5">
-                <li>LM Studio is running with Local Server ON</li>
-                <li>CORS is enabled in LM Studio → Server Settings → Allow cross-origin requests (CORS)</li>
-                <li>URL matches exactly what LM Studio shows</li>
-              </ul>
-            </div>
-          )}
-          <div className="flex gap-2 mt-3">
-            <Button onClick={handleSaveLmUrl} size="sm" variant="secondary" loading={urlSaveStatus === 'checking'}>
-              {urlSaveStatus === 'connected' ? 'Saved!' : 'Save & Test'}
-            </Button>
-            {profile && (
-              <Button onClick={handleRegenerate} size="sm" loading={regenerating} variant={regenStatus === 'success' ? 'secondary' : 'primary'}>
-                {regenStatus === 'success' ? 'Plan Updated!' : regenStatus === 'error' ? 'Failed — Retry' : 'Regenerate Plan'}
-              </Button>
-            )}
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">AI Engine</p>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-sm font-medium text-app-dark dark:text-white">Gemini 2.5 Flash</span>
           </div>
+          <p className="text-xs text-gray-400">Powered by Google Gemini AI. Plan generation uses AI when available, with local fallback.</p>
+          {profile && (
+            <Button onClick={handleRegenerate} size="sm" className="mt-3" loading={regenerating} variant={regenStatus === 'success' ? 'secondary' : 'primary'}>
+              {regenStatus === 'success' ? 'Plan Updated!' : regenStatus === 'error' ? 'Failed — Retry' : 'Regenerate Plan'}
+            </Button>
+          )}
         </Card>
 
         {/* App Preferences */}

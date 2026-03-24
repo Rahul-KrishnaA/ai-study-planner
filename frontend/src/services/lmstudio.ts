@@ -2,16 +2,13 @@ import type { UserProfile, StudyPlan } from '../types';
 import { generateLocalPlan } from './scheduler';
 import { apiGeneratePlan, apiGenerateInsights } from './api';
 
-const DEFAULT_LM_URL = 'http://127.0.0.1:1240';
-
 export async function generateStudyPlan(
   profile: UserProfile,
-  lmStudioUrl: string = DEFAULT_LM_URL,
 ): Promise<StudyPlan> {
   try {
-    return await apiGeneratePlan(profile, lmStudioUrl);
+    return await apiGeneratePlan(profile);
   } catch (err) {
-    console.warn('LM Studio unavailable, using local plan:', err);
+    console.warn('Gemini API unavailable, using local plan:', err);
     return generateLocalPlan(profile);
   }
 }
@@ -19,10 +16,9 @@ export async function generateStudyPlan(
 export async function generateInsights(
   profile: UserProfile,
   sessions: { subject: string; duration: number; date: string }[],
-  lmStudioUrl: string = DEFAULT_LM_URL,
 ): Promise<{ type: string; title: string; body: string }[]> {
   try {
-    return await apiGenerateInsights(profile, sessions, lmStudioUrl);
+    return await apiGenerateInsights(profile, sessions);
   } catch {
     const totalHours = sessions.reduce((sum, s) => sum + s.duration, 0) / 60;
     return [

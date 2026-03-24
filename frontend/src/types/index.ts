@@ -91,7 +91,6 @@ export interface MissedSession {
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 export interface AppSettings {
-  lmStudioUrl: string;
   darkMode: boolean;
   remindersEnabled: boolean;
   reminderMinutesBefore: number;
