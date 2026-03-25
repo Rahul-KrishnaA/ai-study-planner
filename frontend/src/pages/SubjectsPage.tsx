@@ -1,23 +1,40 @@
-import { useState } from 'react';
-import { BookOpen, ChevronDown, ChevronUp, Plus, X, Calendar } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { BookOpen, ChevronDown, ChevronUp, Plus, X, Calendar, Layers } from 'lucide-react';
 import { BottomNav } from '../components/BottomNav';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { ProgressBar } from '../components/ProgressBar';
 import { SubjectAvatar, getSubjectColor } from '../components/SubjectAvatar';
+import { NotesList } from '../components/NotesList';
+import { TopicList } from '../components/TopicList';
 import { useApp } from '../context/AppContext';
 import { generateStudyPlan } from '../services/lmstudio';
 import { daysUntilExam } from '../services/scheduler';
 import type { SubjectDetail } from '../types';
 
 export function SubjectsPage() {
-  const { profile, plan, setProfile, setPlan, updateSubjectProgress } = useApp();
+  const navigate = useNavigate();
+  const { profile, plan, setProfile, setPlan, updateSubjectProgress, flashcards } = useApp();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newSubject, setNewSubject] = useState('');
   const [newExamDate, setNewExamDate] = useState('');
   const [addError, setAddError] = useState('');
   const [regenerating, setRegenerating] = useState(false);
+
+  // Sync topic-driven progress when profile topics change
+  useEffect(() => {
+    if (!profile || !plan) return;
+    profile.subjectDetails.forEach((d) => {
+      const topicList = d.topics ?? [];
+      if (topicList.length === 0) return;
+      const auto = Math.round((topicList.filter((t) => t.status === 'completed').length / topicList.length) * 100);
+      const current = plan.subjectProgress.find((sp) => sp.subject === d.name)?.percentDone ?? 0;
+      if (auto !== current) updateSubjectProgress(d.name, auto);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile]); // intentionally omit plan/updateSubjectProgress to avoid infinite loop
 
   if (!profile || !plan) {
     return (
@@ -35,7 +52,7 @@ export function SubjectsPage() {
     if (!trimmed) { setAddError('Enter a subject name'); return; }
     if (profile.subjects.includes(trimmed)) { setAddError('Subject already exists'); return; }
 
-    const newDetail: SubjectDetail = { name: trimmed, examDate: newExamDate || undefined };
+    const newDetail: SubjectDetail = { id: crypto.randomUUID(), name: trimmed, examDate: newExamDate || undefined };
     const updatedProfile = {
       ...profile,
       subjects: [...profile.subjects, trimmed],
@@ -83,6 +100,18 @@ export function SubjectsPage() {
           <BookOpen size={20} className="text-primary" />
           <h1 className="text-xl font-bold text-app-dark dark:text-white">My Subjects</h1>
         </div>
+
+        {/* Flashcards quick access */}
+        <button
+          onClick={() => navigate('/subjects/flashcards')}
+          className="w-full flex items-center justify-between p-3 mb-4 rounded-xl bg-purple-bg dark:bg-primary/10 hover:bg-primary/20 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Layers size={16} className="text-primary" />
+            <span className="text-sm font-semibold text-primary">Flashcards</span>
+          </div>
+          <span className="text-xs text-primary/60">{flashcards.filter(c => c.nextReviewDate <= new Date().toISOString().split('T')[0]).length} due</span>
+        </button>
 
         {regenerating && (
           <Card className="mb-4 border border-primary">
@@ -147,21 +176,56 @@ export function SubjectsPage() {
                       <span className="text-xs text-gray-400">Exam date</span>
                     </div>
 
-                    {/* Progress slider */}
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <span className="text-xs text-gray-500">Progress</span>
-                        <span className="text-xs font-semibold" style={{ color }}>{sp.percentDone}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0} max={100}
-                        value={sp.percentDone}
-                        onChange={(e) => updateSubjectProgress(sp.subject, Number(e.target.value))}
-                        className="w-full cursor-pointer"
-                        style={{ accentColor: color }}
-                      />
-                    </div>
+                    {/* Progress — topic-driven when topics exist, manual slider otherwise */}
+                    {(() => {
+                      const topicList = detail?.topics ?? [];
+                      const topicDriven = topicList.length > 0;
+                      const autoPercent = topicDriven
+                        ? Math.round((topicList.filter((t) => t.status === 'completed').length / topicList.length) * 100)
+                        : sp.percentDone;
+
+                      return (
+                        <div>
+                          <div className="flex justify-between mb-1">
+                            <span className="text-xs text-gray-500">
+                              Progress {topicDriven ? '(from topics)' : ''}
+                            </span>
+                            <span className="text-xs font-semibold" style={{ color }}>{autoPercent}%</span>
+                          </div>
+                          {topicDriven ? (
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                              <div
+                                className="h-2 rounded-full transition-all"
+                                style={{ width: `${autoPercent}%`, backgroundColor: color }}
+                              />
+                            </div>
+                          ) : (
+                            <input
+                              type="range"
+                              min={0} max={100}
+                              value={sp.percentDone}
+                              onChange={(e) => updateSubjectProgress(sp.subject, Number(e.target.value))}
+                              className="w-full cursor-pointer"
+                              style={{ accentColor: color }}
+                            />
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Topics */}
+                    <TopicList subjectId={detail?.id ?? ''} />
+
+                    {/* Notes */}
+                    <NotesList subjectId={detail?.id ?? ''} subjectName={sp.subject} />
+
+                    {/* Per-subject flashcards link */}
+                    <button
+                      onClick={() => navigate(`/subjects/flashcards?subject=${detail?.id}`)}
+                      className="flex items-center gap-1 text-xs text-primary font-semibold mt-1"
+                    >
+                      <Layers size={12} /> View Flashcards
+                    </button>
                   </div>
                 )}
               </Card>
