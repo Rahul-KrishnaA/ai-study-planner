@@ -81,7 +81,7 @@ export function StatsPage() {
     generateInsights(profile, sessionData)
       .then(setInsights)
       .finally(() => setLoadingInsights(false));
-  }, [filter]);
+  }, [filter, filtered, profile]);
 
   return (
     <div className="min-h-screen bg-app-bg dark:bg-gray-950 pb-24">

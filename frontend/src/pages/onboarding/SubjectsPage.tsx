@@ -21,7 +21,7 @@ export function SubjectsPage({ initialSubjects, onNext, onBack, step, totalSteps
     const trimmed = inputName.trim();
     if (!trimmed) return;
     if (subjects.find((s) => s.name === trimmed)) { setError('Subject already added'); return; }
-    setSubjects((prev) => [...prev, { name: trimmed, examDate: inputDate || undefined }]);
+    setSubjects((prev) => [...prev, { id: crypto.randomUUID(), name: trimmed, examDate: inputDate || undefined }]);
     setInputName('');
     setInputDate('');
     setError('');
