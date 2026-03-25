@@ -7,8 +7,10 @@ import { OnboardingPage } from './pages/OnboardingPage';
 import { HomePage } from './pages/HomePage';
 import { TimetablePage } from './pages/TimetablePage';
 import { SubjectsPage } from './pages/SubjectsPage';
+import { FlashcardsPage } from './pages/FlashcardsPage';
 import { StatsPage } from './pages/StatsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { AchievementsPage } from './pages/AchievementsPage';
 
 function LoadingScreen() {
   return (
@@ -37,9 +39,11 @@ function AuthenticatedApp() {
       <Route path="/onboarding" element={<OnboardingPage />} />
       <Route path="/home" element={hasOnboarded ? <HomePage /> : <Navigate to="/onboarding" replace />} />
       <Route path="/timetable" element={hasOnboarded ? <TimetablePage /> : <Navigate to="/onboarding" replace />} />
+      <Route path="/subjects/flashcards" element={hasOnboarded ? <FlashcardsPage /> : <Navigate to="/onboarding" replace />} />
       <Route path="/subjects" element={hasOnboarded ? <SubjectsPage /> : <Navigate to="/onboarding" replace />} />
       <Route path="/stats" element={hasOnboarded ? <StatsPage /> : <Navigate to="/onboarding" replace />} />
       <Route path="/settings" element={hasOnboarded ? <SettingsPage /> : <Navigate to="/onboarding" replace />} />
+      <Route path="/achievements" element={hasOnboarded ? <AchievementsPage /> : <Navigate to="/onboarding" replace />} />
       <Route path="*" element={<Navigate to={hasOnboarded ? '/home' : '/onboarding'} replace />} />
     </Routes>
   );

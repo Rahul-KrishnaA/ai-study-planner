@@ -256,6 +256,24 @@ export function SettingsPage() {
               </div>
             </div>
           )}
+
+          {/* Weekly study goal */}
+          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+            <div className="flex justify-between mb-1">
+              <span className="text-xs text-gray-500">Weekly study goal</span>
+              <span className="text-xs font-semibold text-primary">{settings.weeklyGoalHours}h</span>
+            </div>
+            <input
+              type="range" min={1} max={40} step={1}
+              value={settings.weeklyGoalHours}
+              onChange={(e) => updateSettings({ weeklyGoalHours: Number(e.target.value) })}
+              className="w-full cursor-pointer"
+              style={{ accentColor: '#6C47FF' }}
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1">
+              <span>1h</span><span>40h</span>
+            </div>
+          </div>
         </Card>
 
         {/* Pomodoro Settings */}

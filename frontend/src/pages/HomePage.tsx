@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Zap, Play, User, ChevronRight, AlertCircle, Timer } from 'lucide-react';
 import { BottomNav } from '../components/BottomNav';
@@ -8,8 +8,11 @@ import { ProgressBar } from '../components/ProgressBar';
 import { SubjectAvatar, getSubjectColor } from '../components/SubjectAvatar';
 import { PomodoroTimer } from '../components/PomodoroTimer';
 import { NoteEditor } from '../components/NoteEditor';
+import { AchievementToast } from '../components/AchievementToast';
+import { WeeklyGoalRing } from '../components/WeeklyGoalRing';
 import { useApp } from '../context/AppContext';
 import { nextExam } from '../services/scheduler';
+import { xpProgressInLevel } from '../services/xp';
 import type { SubjectDetail } from '../types';
 
 function formatTime(t: string) {
@@ -31,7 +34,10 @@ function getGreeting(): string {
 
 export function HomePage() {
   const navigate = useNavigate();
-  const { profile, plan, streak, missedSessions, dismissMissed, addNote } = useApp();
+  const {
+    profile, plan, streak, missedSessions, dismissMissed, addNote, sessions, settings,
+    xp, level, bestStreak, streakFreezes, lastUnlockedAchievements, clearUnlockedAchievements,
+  } = useApp();
   const [activeSession, setActiveSession] = useState<{
     subject: string;
     chapter: string;
@@ -40,6 +46,15 @@ export function HomePage() {
   } | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | undefined>(undefined);
   const [noteEditorSubject, setNoteEditorSubject] = useState<SubjectDetail | null>(null);
+  const [toastQueue, setToastQueue] = useState<string[]>([]);
+
+  // When new achievements unlock, push to queue
+  useEffect(() => {
+    if (lastUnlockedAchievements.length > 0) {
+      setToastQueue((q) => [...q, ...lastUnlockedAchievements]);
+      clearUnlockedAchievements();
+    }
+  }, [lastUnlockedAchievements, clearUnlockedAchievements]);
 
   if (!profile || !plan) {
     return (
@@ -63,6 +78,19 @@ export function HomePage() {
 
   const upcomingExam = nextExam(profile.subjectDetails);
 
+  // Weekly hours studied
+  const thisWeekStart = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - d.getDay());
+    return d.toISOString().split('T')[0];
+  })();
+  const weeklyHours = sessions
+    .filter((s) => s.date >= thisWeekStart)
+    .reduce((sum, s) => sum + s.duration, 0) / 60;
+
+  const { current: xpCurrent, needed: xpNeeded } = xpProgressInLevel(xp);
+  const weeklyGoalHours = settings.weeklyGoalHours;
+
   function handlePomodoroComplete() {
     setActiveSession(null);
   }
@@ -73,12 +101,23 @@ export function HomePage() {
 
   return (
     <div className="min-h-screen bg-app-bg dark:bg-gray-950 pb-24">
+      {/* Achievement toasts */}
+      {toastQueue.length > 0 && (
+        <AchievementToast
+          achievementId={toastQueue[0]}
+          onDismiss={() => setToastQueue((q) => q.slice(1))}
+        />
+      )}
+
       <div className="max-w-lg mx-auto px-4 pt-12">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-sm text-gray-500 dark:text-gray-400">Good {getGreeting()},</p>
-            <h1 className="text-2xl font-bold text-app-dark dark:text-white">{profile.name}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-app-dark dark:text-white">{profile.name}</h1>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-primary text-white">Lv {level}</span>
+            </div>
             {profile.institution && (
               <p className="text-xs text-gray-400 mt-0.5">{profile.institution}{profile.semester ? ` — ${profile.semester}` : ''}</p>
             )}
@@ -89,6 +128,43 @@ export function HomePage() {
           >
             <User size={18} className="text-primary" />
           </button>
+        </div>
+
+        {/* Stats row: weekly goal ring + XP bar + streak */}
+        <div className="flex items-center gap-3 mb-4">
+          <WeeklyGoalRing hoursStudied={weeklyHours} goalHours={weeklyGoalHours} />
+          <div className="flex-1">
+            {/* XP bar */}
+            <div className="mb-2">
+              <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <span>{xpCurrent} / {xpNeeded} XP</span>
+                <button onClick={() => navigate('/achievements')} className="text-primary font-semibold">Achievements</button>
+              </div>
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                <div
+                  className="h-2 rounded-full bg-primary transition-all duration-500"
+                  style={{ width: `${Math.round((xpCurrent / xpNeeded) * 100)}%` }}
+                />
+              </div>
+            </div>
+            {/* Streak */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span className="text-lg">🔥</span>
+                <span className="text-sm font-bold text-app-dark dark:text-white">{streak}</span>
+                <span className="text-xs text-gray-400">streak</span>
+              </div>
+              {streakFreezes > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="text-base">🧊</span>
+                  <span className="text-xs font-semibold text-blue-400">×{streakFreezes}</span>
+                </div>
+              )}
+              {bestStreak > streak && bestStreak > 0 && (
+                <span className="text-xs text-gray-400">best: {bestStreak}</span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Missed sessions alert */}
