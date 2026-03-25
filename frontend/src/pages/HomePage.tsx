@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Play, Square, User, ChevronRight, AlertCircle, Timer } from 'lucide-react';
+import { Zap, Play, User, ChevronRight, AlertCircle, Timer } from 'lucide-react';
 import { BottomNav } from '../components/BottomNav';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { ProgressBar } from '../components/ProgressBar';
 import { SubjectAvatar, getSubjectColor } from '../components/SubjectAvatar';
+import { PomodoroTimer } from '../components/PomodoroTimer';
+import { NoteEditor } from '../components/NoteEditor';
 import { useApp } from '../context/AppContext';
 import { nextExam } from '../services/scheduler';
-import type { TrackedSession } from '../types';
+import type { SubjectDetail } from '../types';
 
 function formatTime(t: string) {
   const [h, m] = t.split(':').map(Number);
@@ -27,26 +29,17 @@ function getGreeting(): string {
   return 'evening';
 }
 
-function useElapsedTimer(startMs: number | null): string {
-  const [elapsed, setElapsed] = useState('00:00');
-  useEffect(() => {
-    if (!startMs) return;
-    const iv = setInterval(() => {
-      const secs = Math.floor((Date.now() - startMs) / 1000);
-      const m = String(Math.floor(secs / 60)).padStart(2, '0');
-      const s = String(secs % 60).padStart(2, '0');
-      setElapsed(`${m}:${s}`);
-    }, 1000);
-    return () => clearInterval(iv);
-  }, [startMs]);
-  return elapsed;
-}
-
 export function HomePage() {
   const navigate = useNavigate();
-  const { profile, plan, streak, addSession, missedSessions, dismissMissed } = useApp();
-  const [activeSession, setActiveSession] = useState<{ subject: string; chapter: string; startMs: number } | null>(null);
-  const elapsed = useElapsedTimer(activeSession?.startMs ?? null);
+  const { profile, plan, streak, missedSessions, dismissMissed, addNote } = useApp();
+  const [activeSession, setActiveSession] = useState<{
+    subject: string;
+    chapter: string;
+    plannedSessionId?: string;
+    topicName?: string;
+  } | null>(null);
+  const [selectedTopicId, setSelectedTopicId] = useState<string | undefined>(undefined);
+  const [noteEditorSubject, setNoteEditorSubject] = useState<SubjectDetail | null>(null);
 
   if (!profile || !plan) {
     return (
@@ -70,21 +63,11 @@ export function HomePage() {
 
   const upcomingExam = nextExam(profile.subjectDetails);
 
-  function startSession(subject: string, chapter: string) {
-    setActiveSession({ subject, chapter, startMs: Date.now() });
+  function handlePomodoroComplete() {
+    setActiveSession(null);
   }
 
-  function stopSession() {
-    if (!activeSession) return;
-    const duration = Math.max(1, Math.round((Date.now() - activeSession.startMs) / 60000));
-    const tracked: TrackedSession = {
-      id: `${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
-      subject: activeSession.subject,
-      duration,
-      completed: true,
-    };
-    addSession(tracked);
+  function handlePomodoroCancel() {
     setActiveSession(null);
   }
 
@@ -163,23 +146,30 @@ export function HomePage() {
           </Card>
         )}
 
-        {/* Active session timer */}
+        {/* Active Pomodoro Timer */}
         {activeSession && (
-          <Card className="mb-4 border-2 border-primary bg-purple-bg dark:bg-primary/10">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-primary uppercase tracking-wide">Session in progress</p>
-                <p className="text-sm font-bold text-app-dark dark:text-white">{activeSession.subject}</p>
-                <p className="text-xs text-gray-500">{activeSession.chapter}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xl font-mono font-bold text-primary">{elapsed}</span>
-                <Button variant="danger" size="sm" onClick={stopSession} className="flex items-center gap-1">
-                  <Square size={12} fill="currentColor" /> Stop
-                </Button>
-              </div>
-            </div>
-          </Card>
+          <div className="mb-4">
+            <PomodoroTimer
+              subject={activeSession.subject}
+              chapter={activeSession.chapter}
+              plannedSessionId={activeSession.plannedSessionId}
+              topicName={activeSession.topicName}
+              onComplete={handlePomodoroComplete}
+              onCancel={handlePomodoroCancel}
+              onAddNote={() => {
+                const detail = profile.subjectDetails.find(d => d.name === activeSession.subject);
+                if (detail) setNoteEditorSubject(detail);
+              }}
+            />
+            {noteEditorSubject && (
+              <NoteEditor
+                subjectId={noteEditorSubject.id}
+                subjectName={noteEditorSubject.name}
+                onSave={(note) => { addNote(note); setNoteEditorSubject(null); }}
+                onCancel={() => setNoteEditorSubject(null)}
+              />
+            )}
+          </div>
         )}
 
         {/* Up Next */}
@@ -204,17 +194,43 @@ export function HomePage() {
                     <span className="text-xs text-gray-400">{formatTime(nextSession.startTime)} – {formatTime(nextSession.endTime)}</span>
                   </div>
                   <p className="text-base font-bold text-app-dark dark:text-white mb-3 truncate">{nextSession.chapter}</p>
-                  <Button
-                    size="sm"
-                    onClick={() => activeSession ? stopSession() : startSession(nextSession.subject, nextSession.chapter)}
-                    className="flex items-center gap-1.5"
-                    variant={activeSession?.subject === nextSession.subject ? 'danger' : 'primary'}
-                  >
-                    {activeSession?.subject === nextSession.subject
-                      ? <><Square size={12} fill="currentColor" /> Stop</>
-                      : <><Play size={14} /> Start Session</>
-                    }
-                  </Button>
+                  {!activeSession && (() => {
+                    const detail = profile.subjectDetails.find((d) => d.name === nextSession.subject);
+                    const pendingTopics = detail?.topics?.filter((t) => t.status !== 'completed') ?? [];
+                    return (
+                      <div className="flex flex-col gap-2">
+                        {pendingTopics.length > 0 && (
+                          <select
+                            className="w-full text-sm px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary"
+                            value={selectedTopicId ?? ''}
+                            onChange={(e) => setSelectedTopicId(e.target.value || undefined)}
+                          >
+                            <option value="">Select topic (optional)</option>
+                            {pendingTopics.map((t) => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                          </select>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const topicName = selectedTopicId
+                              ? detail?.topics?.find((t) => t.id === selectedTopicId)?.name
+                              : undefined;
+                            setActiveSession({
+                              subject: nextSession.subject,
+                              chapter: topicName ?? nextSession.chapter,
+                              plannedSessionId: nextSession.id,
+                              topicName,
+                            });
+                          }}
+                          className="flex items-center gap-1.5"
+                        >
+                          <Play size={14} /> Start Session
+                        </Button>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </Card>
