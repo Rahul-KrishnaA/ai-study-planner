@@ -27,11 +27,19 @@ export interface UserProfile {
   dailyGoalHours: number;
 }
 
+export interface Topic {
+  id: string;
+  name: string;
+  status: 'not_started' | 'in_progress' | 'completed';
+}
+
 export interface SubjectDetail {
+  id: string;        // stable UUID
   name: string;
   examDate?: string; // ISO date YYYY-MM-DD
   hoursPerWeek?: number;
   color?: string;
+  topics?: Topic[];
 }
 
 // ─── Schedule ─────────────────────────────────────────────────────────────────
@@ -44,6 +52,7 @@ export interface StudySession {
   color: string;
   rescheduled?: boolean;
   originalDay?: string;
+  topicId?: string;
 }
 
 export interface DaySchedule {
@@ -77,6 +86,8 @@ export interface TrackedSession {
   duration: number;   // minutes
   completed: boolean;
   plannedSessionId?: string;
+  pomodoroCount?: number; // completed pomodoro cycles (0 or undefined = not a pomodoro session)
+  topicName?: string;
 }
 
 export interface MissedSession {
@@ -94,6 +105,10 @@ export interface AppSettings {
   darkMode: boolean;
   remindersEnabled: boolean;
   reminderMinutesBefore: number;
+  pomodoroWorkMinutes: number;
+  pomodoroBreakMinutes: number;
+  pomodoroLongBreakMinutes: number;
+  pomodorosBeforeLongBreak: number;
 }
 
 // ─── Storage Keys (per-user) ──────────────────────────────────────────────────
