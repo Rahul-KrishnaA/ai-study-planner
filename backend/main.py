@@ -121,6 +121,20 @@ class FlashcardsRequest(BaseModel):
     flashcards: list
 
 
+class GamificationRequest(BaseModel):
+    xp: int
+    level: int
+    achievements: list
+    weekly_goal_hours: Optional[int] = None
+
+
+class StreakFullRequest(BaseModel):
+    streak: int
+    last_session_date: Optional[str] = None
+    streak_freezes: int = 0
+    best_streak: int = 0
+
+
 class LMGeneratePlanRequest(BaseModel):
     profile: dict
 
@@ -236,6 +250,12 @@ def get_user_data(
         "last_session_date": data.last_session_date,
         "notes": json.loads(data.notes_json) if data.notes_json else [],
         "flashcards": json.loads(data.flashcards_json) if data.flashcards_json else [],
+        "xp": data.xp or 0,
+        "level": data.level or 1,
+        "best_streak": data.best_streak or 0,
+        "streak_freezes": data.streak_freezes or 0,
+        "achievements": json.loads(data.achievements_json) if data.achievements_json else [],
+        "weekly_goal_hours": data.weekly_goal_hours or 10,
     }
 
 
@@ -317,13 +337,31 @@ def save_flashcards(
 
 @app.put("/users/me/streak")
 def update_streak(
-    req: StreakRequest,
+    req: StreakFullRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     data = get_or_create_user_data(current_user.id, db)
     data.streak = req.streak
     data.last_session_date = req.last_session_date
+    data.streak_freezes = req.streak_freezes
+    data.best_streak = req.best_streak
+    db.commit()
+    return {"ok": True}
+
+
+@app.put("/users/me/gamification")
+def update_gamification(
+    req: GamificationRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    data = get_or_create_user_data(current_user.id, db)
+    data.xp = req.xp
+    data.level = req.level
+    data.achievements_json = json.dumps(req.achievements)
+    if req.weekly_goal_hours is not None:
+        data.weekly_goal_hours = req.weekly_goal_hours
     db.commit()
     return {"ok": True}
 
@@ -343,6 +381,12 @@ def reset_user_data(
         data.last_session_date = None
         data.notes_json = "[]"
         data.flashcards_json = "[]"
+        data.xp = 0
+        data.level = 1
+        data.best_streak = 0
+        data.streak_freezes = 0
+        data.achievements_json = "[]"
+        data.weekly_goal_hours = 10
         db.commit()
     return {"ok": True}
 

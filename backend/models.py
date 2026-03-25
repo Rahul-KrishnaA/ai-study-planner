@@ -24,3 +24,12 @@ class UserData(Base):
     settings_json = Column(Text, nullable=True)
     streak = Column(Integer, default=0)
     last_session_date = Column(String, nullable=True)
+    notes_json = Column(Text, default="[]")
+    flashcards_json = Column(Text, default="[]")
+    # Phase 3 — gamification
+    xp = Column(Integer, default=0)
+    level = Column(Integer, default=1)
+    best_streak = Column(Integer, default=0)
+    streak_freezes = Column(Integer, default=0)
+    achievements_json = Column(Text, default="[]")
+    weekly_goal_hours = Column(Integer, default=10)
