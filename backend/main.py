@@ -113,6 +113,14 @@ class StreakRequest(BaseModel):
     last_session_date: Optional[str] = None
 
 
+class NotesRequest(BaseModel):
+    notes: list
+
+
+class FlashcardsRequest(BaseModel):
+    flashcards: list
+
+
 class LMGeneratePlanRequest(BaseModel):
     profile: dict
 
@@ -226,6 +234,8 @@ def get_user_data(
         "settings": json.loads(data.settings_json) if data.settings_json else None,
         "streak": data.streak or 0,
         "last_session_date": data.last_session_date,
+        "notes": json.loads(data.notes_json) if data.notes_json else [],
+        "flashcards": json.loads(data.flashcards_json) if data.flashcards_json else [],
     }
 
 
@@ -281,6 +291,30 @@ def save_settings(
     return {"ok": True}
 
 
+@app.put("/users/me/notes")
+def save_notes(
+    req: NotesRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    data = get_or_create_user_data(current_user.id, db)
+    data.notes_json = json.dumps(req.notes)
+    db.commit()
+    return {"ok": True}
+
+
+@app.put("/users/me/flashcards")
+def save_flashcards(
+    req: FlashcardsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    data = get_or_create_user_data(current_user.id, db)
+    data.flashcards_json = json.dumps(req.flashcards)
+    db.commit()
+    return {"ok": True}
+
+
 @app.put("/users/me/streak")
 def update_streak(
     req: StreakRequest,
@@ -307,6 +341,8 @@ def reset_user_data(
         data.settings_json = None
         data.streak = 0
         data.last_session_date = None
+        data.notes_json = "[]"
+        data.flashcards_json = "[]"
         db.commit()
     return {"ok": True}
 
@@ -327,11 +363,25 @@ async def lm_generate_plan(
         for d in profile.get("subjectDetails", [])
     ) or ", ".join(profile.get("subjects", []))
 
+    # Build incomplete topics context for prompt
+    incomplete_topics = []
+    for detail in profile.get("subjectDetails", []):
+        subject_name = detail.get("name", "")
+        topics = detail.get("topics", [])
+        pending = [t.get("name", "") for t in topics if t.get("status") != "completed" and t.get("name")]
+        if pending:
+            incomplete_topics.append(f"{subject_name}: {', '.join(pending)}")
+    topics_context = (
+        "\nIncomplete topics to prioritize in sessions:\n" + "\n".join(f"- {t}" for t in incomplete_topics)
+        if incomplete_topics else ""
+    )
+
     prompt = (
         f"Create a weekly study plan for {profile.get('name')} studying {profile.get('studyField')}.\n"
         f"Subjects with deadlines: {subject_list}.\n"
         f"Preferred time: {profile.get('preferredTime')}. Daily goal: {profile.get('dailyGoalHours')}h.\n"
-        f"Institution: {profile.get('institution', 'not specified')}. Semester: {profile.get('semester', 'not specified')}.\n"
+        f"Institution: {profile.get('institution', 'not specified')}. Semester: {profile.get('semester', 'not specified')}."
+        f"{topics_context}\n"
         "Colors to use per subject: #6C47FF, #FF6B6B, #4ECDC4, #45B7D1, #96CEB4, #F4A261, #DDA0DD.\n"
         "Include all 7 days (Monday-Sunday). 2-3 sessions per day. Keep chapter names SHORT (max 5 words).\n"
         "Prioritize subjects with closer exams. Generate 2 insights.\n\n"
