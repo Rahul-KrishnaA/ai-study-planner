@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, Moon, Sun, Trash2, Save, Bell, BellOff, Eye, EyeOff, LogOut, Lock } from 'lucide-react';
+import { Settings, Moon, Sun, Trash2, Save, Bell, BellOff, Eye, EyeOff, LogOut, Lock, Database } from 'lucide-react';
 import { BottomNav } from '../components/BottomNav';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -177,6 +177,36 @@ export function SettingsPage() {
           )}
         </Card>
 
+        {/* Data & Backup */}
+        <Card className="mb-4">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Data & Backup</p>
+          <p className="text-xs text-gray-400 mb-3">Export your plan from the Timetable page. Import a backup to restore your data.</p>
+          <label className="cursor-pointer">
+            <span className="inline-flex items-center gap-1.5 text-sm text-primary font-semibold">
+              <Database size={14} /> Import JSON Backup
+            </span>
+            <input
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  const data = JSON.parse(text);
+                  if (data.profile) setProfile(data.profile);
+                  if (data.plan) setPlan(data.plan);
+                  alert('Backup restored successfully!');
+                } catch {
+                  alert('Invalid backup file.');
+                }
+                e.target.value = '';
+              }}
+            />
+          </label>
+        </Card>
+
         {/* App Preferences */}
         <Card className="mb-4">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Preferences</p>
@@ -226,6 +256,61 @@ export function SettingsPage() {
               </div>
             </div>
           )}
+        </Card>
+
+        {/* Pomodoro Settings */}
+        <Card className="mb-4">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Pomodoro Timer</p>
+          <div className="flex flex-col gap-4">
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-xs text-gray-500">Work duration</span>
+                <span className="text-xs font-semibold text-primary">{settings.pomodoroWorkMinutes} min</span>
+              </div>
+              <input
+                type="range" min={15} max={60} step={5}
+                value={settings.pomodoroWorkMinutes}
+                onChange={(e) => updateSettings({ pomodoroWorkMinutes: Number(e.target.value) })}
+                className="w-full cursor-pointer" style={{ accentColor: '#6C47FF' }}
+              />
+            </div>
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-xs text-gray-500">Short break</span>
+                <span className="text-xs font-semibold text-primary">{settings.pomodoroBreakMinutes} min</span>
+              </div>
+              <input
+                type="range" min={3} max={15} step={1}
+                value={settings.pomodoroBreakMinutes}
+                onChange={(e) => updateSettings({ pomodoroBreakMinutes: Number(e.target.value) })}
+                className="w-full cursor-pointer" style={{ accentColor: '#6C47FF' }}
+              />
+            </div>
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-xs text-gray-500">Long break</span>
+                <span className="text-xs font-semibold text-primary">{settings.pomodoroLongBreakMinutes} min</span>
+              </div>
+              <input
+                type="range" min={10} max={30} step={5}
+                value={settings.pomodoroLongBreakMinutes}
+                onChange={(e) => updateSettings({ pomodoroLongBreakMinutes: Number(e.target.value) })}
+                className="w-full cursor-pointer" style={{ accentColor: '#6C47FF' }}
+              />
+            </div>
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-xs text-gray-500">Pomodoros before long break</span>
+                <span className="text-xs font-semibold text-primary">{settings.pomodorosBeforeLongBreak}</span>
+              </div>
+              <input
+                type="range" min={2} max={6} step={1}
+                value={settings.pomodorosBeforeLongBreak}
+                onChange={(e) => updateSettings({ pomodorosBeforeLongBreak: Number(e.target.value) })}
+                className="w-full cursor-pointer" style={{ accentColor: '#6C47FF' }}
+              />
+            </div>
+          </div>
         </Card>
 
         {/* Danger Zone */}
