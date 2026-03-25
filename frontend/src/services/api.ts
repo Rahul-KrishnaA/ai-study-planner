@@ -1,4 +1,7 @@
 import type { UserProfile, StudyPlan, TrackedSession, AppSettings } from '../types';
+import type { Note } from '../types/notes';
+import type { Flashcard } from '../types/flashcards';
+import type { AchievementRecord } from '../types/achievements';
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
 const TOKEN_KEY = 'sp_token';
@@ -119,6 +122,14 @@ export interface UserDataResponse {
   settings: AppSettings | null;
   streak: number;
   last_session_date: string | null;
+  notes: Note[];
+  flashcards: Flashcard[];
+  xp: number;
+  level: number;
+  best_streak: number;
+  streak_freezes: number;
+  achievements: AchievementRecord[];
+  weekly_goal_hours: number;
 }
 
 export async function apiGetUserData(): Promise<UserDataResponse> {
@@ -162,6 +173,49 @@ export async function apiUpdateStreak(
 
 export async function apiResetData(): Promise<void> {
   await request('/users/me/data', { method: 'DELETE' });
+}
+
+export async function apiUpdateGamification(
+  xp: number,
+  level: number,
+  achievements: AchievementRecord[],
+  weeklyGoalHours?: number,
+): Promise<void> {
+  await request('/users/me/gamification', {
+    method: 'PUT',
+    body: JSON.stringify({ xp, level, achievements, weekly_goal_hours: weeklyGoalHours }),
+  });
+}
+
+export async function apiUpdateStreakFull(
+  streak: number,
+  lastSessionDate: string | null,
+  streakFreezes: number,
+  bestStreak: number,
+): Promise<void> {
+  await request('/users/me/streak', {
+    method: 'PUT',
+    body: JSON.stringify({
+      streak,
+      last_session_date: lastSessionDate,
+      streak_freezes: streakFreezes,
+      best_streak: bestStreak,
+    }),
+  });
+}
+
+export async function apiSaveNotes(notes: Note[]): Promise<void> {
+  await request('/users/me/notes', {
+    method: 'PUT',
+    body: JSON.stringify({ notes }),
+  });
+}
+
+export async function apiSaveFlashcards(flashcards: Flashcard[]): Promise<void> {
+  await request('/users/me/flashcards', {
+    method: 'PUT',
+    body: JSON.stringify({ flashcards }),
+  });
 }
 
 // ─── LM Studio proxy ──────────────────────────────────────────────────────────

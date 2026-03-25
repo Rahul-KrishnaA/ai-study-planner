@@ -109,6 +109,7 @@ export interface AppSettings {
   pomodoroBreakMinutes: number;
   pomodoroLongBreakMinutes: number;
   pomodorosBeforeLongBreak: number;
+  weeklyGoalHours: number;
 }
 
 // ─── Storage Keys (per-user) ──────────────────────────────────────────────────
