@@ -1,19 +1,24 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import type { UserProfile, StudyPlan, TrackedSession, AppSettings, MissedSession, Topic } from '../types';
 import type { Note } from '../types/notes';
 import type { Flashcard } from '../types/flashcards';
+import type { AchievementRecord } from '../types/achievements';
+import { buildInitialAchievements } from '../types/achievements';
 import { detectMissedSessions, rescheduleMissedSessions } from '../services/scheduler';
 import { scheduleSessionNotifications, notifyRescheduled, clearScheduledNotifications } from '../services/notifications';
+import { calcSessionXP, calcFlashcardXP, TOPIC_COMPLETE_XP, levelFromTotalXP } from '../services/xp';
+import { checkAchievements } from '../services/achievementChecker';
 import {
   apiGetUserData,
   apiSaveProfile,
   apiSavePlan,
   apiAddSession,
   apiSaveSettings,
-  apiUpdateStreak,
+  apiUpdateStreakFull,
   apiResetData,
   apiSaveNotes,
   apiSaveFlashcards,
+  apiUpdateGamification,
 } from '../services/api';
 
 interface AppContextValue {
@@ -26,6 +31,12 @@ interface AppContextValue {
   dataLoading: boolean;
   notes: Note[];
   flashcards: Flashcard[];
+  xp: number;
+  level: number;
+  bestStreak: number;
+  streakFreezes: number;
+  achievements: AchievementRecord[];
+  lastUnlockedAchievements: string[];
   setProfile: (profile: UserProfile) => void;
   setPlan: (plan: StudyPlan) => void;
   addSession: (session: TrackedSession) => void;
@@ -43,6 +54,10 @@ interface AppContextValue {
   addFlashcard: (card: Flashcard) => void;
   updateFlashcard: (id: string, updates: Partial<Flashcard>) => void;
   deleteFlashcard: (id: string) => void;
+  awardXP: (amount: number) => void;
+  awardFlashcardXP: (count: number) => void;
+  awardTopicXP: () => void;
+  clearUnlockedAchievements: () => void;
 }
 
 const defaultSettings: AppSettings = {
@@ -53,6 +68,7 @@ const defaultSettings: AppSettings = {
   pomodoroBreakMinutes: 5,
   pomodoroLongBreakMinutes: 15,
   pomodorosBeforeLongBreak: 4,
+  weeklyGoalHours: 10,
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -73,6 +89,19 @@ export function AppProvider({ children, userId: _userId }: AppProviderProps) {
   const [dataLoading, setDataLoading] = useState(true);
   const [notes, setNotesState] = useState<Note[]>([]);
   const [flashcards, setFlashcardsState] = useState<Flashcard[]>([]);
+
+  // ─── Gamification state ───────────────────────────────────────────────────────
+  const [xp, setXp] = useState<number>(0);
+  const [level, setLevel] = useState<number>(1);
+  const [bestStreak, setBestStreak] = useState<number>(0);
+  const [streakFreezes, setStreakFreezes] = useState<number>(0);
+  const [achievements, setAchievements] = useState<AchievementRecord[]>([]);
+  const [lastUnlockedAchievements, setLastUnlockedAchievements] = useState<string[]>([]);
+  const [totalFlashcardsReviewed, setTotalFlashcardsReviewed] = useState<number>(0);
+  const [totalTopicsCompleted, setTotalTopicsCompleted] = useState<number>(0);
+
+  // Skip achievement check on initial data load
+  const achievementsInitialized = useRef(false);
 
   // Load all data from backend on mount
   useEffect(() => {
@@ -99,16 +128,41 @@ export function AppProvider({ children, userId: _userId }: AppProviderProps) {
         setFlashcardsState(data.flashcards ?? []);
         if (data.settings) setSettingsState({ ...defaultSettings, ...data.settings });
 
-        // Streak: reset to 0 if last session was >1 day ago
+        // Load gamification state
+        setXp(data.xp ?? 0);
+        setLevel(data.level ?? 1);
+        setBestStreak(data.best_streak ?? 0);
+        setAchievements(data.achievements?.length ? data.achievements : buildInitialAchievements());
+
+        // Compute flashcards reviewed count from review history
+        const flashcardReviewedCount = (data.flashcards ?? []).reduce(
+          (sum: number, c: { interval: number }) => sum + (c.interval > 0 ? 1 : 0),
+          0,
+        );
+        setTotalFlashcardsReviewed(flashcardReviewedCount);
+
+        // Streak + freeze logic
         const rawStreak = data.streak ?? 0;
         const lastDate = data.last_session_date ?? null;
-        const adjustedStreak =
-          lastDate &&
-          Math.floor((Date.now() - new Date(lastDate).getTime()) / 86_400_000) > 1
-            ? 0
-            : rawStreak;
+        const daysMissed = lastDate
+          ? Math.floor((Date.now() - new Date(lastDate + 'T12:00:00').getTime()) / 86_400_000)
+          : 0;
+
+        let adjustedStreak = rawStreak;
+        let adjustedFreezes = data.streak_freezes ?? 0;
+        const rawBest = data.best_streak ?? 0;
+
+        if (daysMissed > 1) {
+          const freezesToUse = Math.min(adjustedFreezes, daysMissed - 1);
+          adjustedFreezes -= freezesToUse;
+          const unprotectedDays = (daysMissed - 1) - freezesToUse;
+          if (unprotectedDays > 0) adjustedStreak = 0;
+        }
+
         setStreak(adjustedStreak);
         setLastSessionDate(lastDate);
+        setStreakFreezes(adjustedFreezes);
+        setBestStreak(rawBest);
 
         // Detect and reschedule missed sessions
         if (data.plan) {
@@ -147,6 +201,28 @@ export function AppProvider({ children, userId: _userId }: AppProviderProps) {
     return () => clearScheduledNotifications();
   }, [plan, settings]);
 
+  // Achievement check — runs when key counters change, skips initial load
+  useEffect(() => {
+    if (!achievementsInitialized.current) {
+      achievementsInitialized.current = true;
+      return;
+    }
+    const { updated, newlyUnlocked } = checkAchievements({
+      sessions,
+      streak,
+      level,
+      existing: achievements,
+      totalFlashcardsReviewed,
+      totalTopicsCompleted,
+    });
+    if (newlyUnlocked.length > 0) {
+      setAchievements(updated);
+      setLastUnlockedAchievements(newlyUnlocked);
+      apiUpdateGamification(xp, level, updated).catch(console.error);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions.length, streak, level, totalFlashcardsReviewed, totalTopicsCompleted]);
+
   const setProfile = useCallback((p: UserProfile) => {
     setProfileState(p);
     apiSaveProfile(p).catch(console.error);
@@ -162,16 +238,66 @@ export function AppProvider({ children, userId: _userId }: AppProviderProps) {
       setSessionsState((prev) => [...prev, session]);
       apiAddSession(session).catch(console.error);
 
+      // Award XP
+      setXp((prevXp) => {
+        const xpAmount = calcSessionXP(session);
+        const newXp = prevXp + xpAmount;
+        const newLevel = levelFromTotalXP(newXp);
+        setLevel(newLevel);
+        apiUpdateGamification(newXp, newLevel, achievements).catch(console.error);
+        return newXp;
+      });
+
+      // Update streak with freeze and best streak tracking
       const today = new Date().toISOString().split('T')[0];
       if (lastSessionDate !== today) {
         const newStreak = lastSessionDate ? streak + 1 : 1;
+        const newBest = Math.max(bestStreak, newStreak);
+        const newFreezes = newStreak % 7 === 0 ? Math.min(streakFreezes + 1, 2) : streakFreezes;
         setStreak(newStreak);
+        setBestStreak(newBest);
+        setStreakFreezes(newFreezes);
         setLastSessionDate(today);
-        apiUpdateStreak(newStreak, today).catch(console.error);
+        apiUpdateStreakFull(newStreak, today, newFreezes, newBest).catch(console.error);
       }
     },
-    [streak, lastSessionDate],
+    [streak, lastSessionDate, bestStreak, streakFreezes, achievements],
   );
+
+  const awardXP = useCallback((amount: number) => {
+    setXp((prevXp) => {
+      const newXp = prevXp + amount;
+      const newLevel = levelFromTotalXP(newXp);
+      setLevel(newLevel);
+      apiUpdateGamification(newXp, newLevel, achievements).catch(console.error);
+      return newXp;
+    });
+  }, [achievements]);
+
+  const awardFlashcardXP = useCallback((count: number) => {
+    setTotalFlashcardsReviewed((prev) => prev + count);
+    const amount = calcFlashcardXP(count);
+    setXp((prevXp) => {
+      const newXp = prevXp + amount;
+      const newLevel = levelFromTotalXP(newXp);
+      setLevel(newLevel);
+      apiUpdateGamification(newXp, newLevel, achievements).catch(console.error);
+      return newXp;
+    });
+  }, [achievements]);
+
+  const awardTopicXP = useCallback(() => {
+    setTotalTopicsCompleted((prev) => prev + 1);
+    setXp((prevXp) => {
+      const newXp = prevXp + TOPIC_COMPLETE_XP;
+      const newLevel = levelFromTotalXP(newXp);
+      setLevel(newLevel);
+      apiUpdateGamification(newXp, newLevel, achievements).catch(console.error);
+      return newXp;
+    });
+  }, [achievements]);
+
+  const clearUnlockedAchievements = useCallback(() => setLastUnlockedAchievements([]), []);
 
   const updateSettings = useCallback((partial: Partial<AppSettings>) => {
     setSettingsState((prev) => {
@@ -252,6 +378,14 @@ export function AppProvider({ children, userId: _userId }: AppProviderProps) {
     setMissedSessions([]);
     setNotesState([]);
     setFlashcardsState([]);
+    setXp(0);
+    setLevel(1);
+    setBestStreak(0);
+    setStreakFreezes(0);
+    setAchievements([]);
+    setLastUnlockedAchievements([]);
+    setTotalFlashcardsReviewed(0);
+    setTotalTopicsCompleted(0);
     document.documentElement.classList.remove('dark');
   }, []);
 
@@ -322,6 +456,12 @@ export function AppProvider({ children, userId: _userId }: AppProviderProps) {
         dataLoading,
         notes,
         flashcards,
+        xp,
+        level,
+        bestStreak,
+        streakFreezes,
+        achievements,
+        lastUnlockedAchievements,
         setProfile,
         setPlan,
         addSession,
@@ -339,6 +479,10 @@ export function AppProvider({ children, userId: _userId }: AppProviderProps) {
         addFlashcard,
         updateFlashcard,
         deleteFlashcard,
+        awardXP,
+        awardFlashcardXP,
+        awardTopicXP,
+        clearUnlockedAchievements,
       }}
     >
       {children}
