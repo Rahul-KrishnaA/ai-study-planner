@@ -110,6 +110,9 @@ export interface AppSettings {
   pomodoroLongBreakMinutes: number;
   pomodorosBeforeLongBreak: number;
   weeklyGoalHours: number;
+  aiProvider: 'gemini' | 'local';
+  localLmUrl: string;
+  localLmModel: string;
 }
 
 // ─── Storage Keys (per-user) ──────────────────────────────────────────────────

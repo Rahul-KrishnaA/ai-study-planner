@@ -69,6 +69,9 @@ const defaultSettings: AppSettings = {
   pomodoroLongBreakMinutes: 15,
   pomodorosBeforeLongBreak: 4,
   weeklyGoalHours: 10,
+  aiProvider: 'gemini',
+  localLmUrl: 'http://127.0.0.1:1240',
+  localLmModel: 'qwen3.5-4b',
 };
 
 const AppContext = createContext<AppContextValue | null>(null);

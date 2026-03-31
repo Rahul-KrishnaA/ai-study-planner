@@ -4,6 +4,7 @@ import re
 import uuid
 from typing import Optional
 
+import httpx
 from google import genai
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
@@ -417,15 +418,46 @@ def reset_user_data(
     return {"ok": True}
 
 
-# ─── Gemini AI endpoints ─────────────────────────────────────────────────────
+# ─── Local model helper ───────────────────────────────────────────────────────
+def _extract_json(text: str) -> str:
+    """Strip markdown code fences from LLM output if present."""
+    text = text.strip()
+    match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
+    return match.group(1).strip() if match else text
+
+
+async def _call_local_lm(url: str, model: str, prompt: str, max_tokens: int = 4096) -> str:
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": max_tokens,
+    }
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(f"{url.rstrip('/')}/v1/chat/completions", json=payload)
+        resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+
+def _get_ai_settings(user_id: str, db: Session) -> dict:
+    """Return the user's AI provider settings with defaults."""
+    data = db.query(UserData).filter(UserData.user_id == user_id).first()
+    settings = json.loads(data.settings_json) if (data and data.settings_json) else {}
+    return {
+        "aiProvider": settings.get("aiProvider", "gemini"),
+        "localLmUrl": settings.get("localLmUrl", "http://127.0.0.1:1240"),
+        "localLmModel": settings.get("localLmModel", "qwen3.5-4b"),
+    }
+
+
+# ─── AI endpoints ─────────────────────────────────────────────────────────────
 @app.post("/lm/generate-plan")
 async def lm_generate_plan(
     req: LMGeneratePlanRequest,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    if not gemini_client:
-        raise HTTPException(status_code=503, detail="Gemini API key not configured")
-
+    ai = _get_ai_settings(current_user.id, db)
     profile = req.profile
 
     subject_list = ", ".join(
@@ -433,7 +465,6 @@ async def lm_generate_plan(
         for d in profile.get("subjectDetails", [])
     ) or ", ".join(profile.get("subjects", []))
 
-    # Build incomplete topics context for prompt
     incomplete_topics = []
     for detail in profile.get("subjectDetails", []):
         subject_name = detail.get("name", "")
@@ -455,7 +486,7 @@ async def lm_generate_plan(
         "Colors to use per subject: #6C47FF, #FF6B6B, #4ECDC4, #45B7D1, #96CEB4, #F4A261, #DDA0DD.\n"
         "Include all 7 days (Monday-Sunday). 2-3 sessions per day. Keep chapter names SHORT (max 5 words).\n"
         "Prioritize subjects with closer exams. Generate 2 insights.\n\n"
-        "Return JSON with this structure:\n"
+        "Return ONLY valid JSON with this exact structure, no explanation:\n"
         '{"weeklySchedule":[{"day":"Monday","sessions":[{"id":"mon-0","subject":"Math","chapter":"Ch 1","startTime":"09:00","endTime":"10:00","color":"#6C47FF"}]}],'
         '"insights":[{"type":"tip","title":"short title","body":"short tip"}],'
         '"subjectProgress":[{"subject":"Math","percentDone":0}],'
@@ -463,34 +494,38 @@ async def lm_generate_plan(
     )
 
     try:
-        response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config={
-                "temperature": 0.7,
-                "max_output_tokens": 8192,
-                "response_mime_type": "application/json",
-            },
-        )
+        if ai["aiProvider"] == "local":
+            raw = await _call_local_lm(ai["localLmUrl"], ai["localLmModel"], prompt, max_tokens=8192)
+            plan = json.loads(_extract_json(raw))
+        else:
+            if not gemini_client:
+                raise HTTPException(status_code=503, detail="Gemini API key not configured")
+            response = gemini_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config={"temperature": 0.7, "max_output_tokens": 8192, "response_mime_type": "application/json"},
+            )
+            plan = json.loads(response.text)
 
-        plan = json.loads(response.text)
         if not plan.get("weeklySchedule"):
             raise ValueError("Invalid plan structure")
         return plan
 
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"[GEMINI ERROR] {e}")
-        raise HTTPException(status_code=503, detail=f"Gemini API error: {e}")
+        provider = ai["aiProvider"]
+        print(f"[{provider.upper()} ERROR] {e}")
+        raise HTTPException(status_code=503, detail=f"{provider} error: {e}")
 
 
 @app.post("/lm/generate-insights")
 async def lm_generate_insights(
     req: LMGenerateInsightsRequest,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    if not gemini_client:
-        raise HTTPException(status_code=503, detail="Gemini API key not configured")
-
+    ai = _get_ai_settings(current_user.id, db)
     profile = req.profile
     sessions = req.sessions
 
@@ -509,35 +544,50 @@ async def lm_generate_insights(
     )
 
     try:
-        response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config={
-                "temperature": 0.7,
-                "max_output_tokens": 1024,
-                "response_mime_type": "application/json",
-            },
-        )
+        if ai["aiProvider"] == "local":
+            raw = await _call_local_lm(ai["localLmUrl"], ai["localLmModel"], prompt, max_tokens=1024)
+            return json.loads(_extract_json(raw))
+        else:
+            if not gemini_client:
+                raise HTTPException(status_code=503, detail="Gemini API key not configured")
+            response = gemini_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config={"temperature": 0.7, "max_output_tokens": 1024, "response_mime_type": "application/json"},
+            )
+            return json.loads(response.text)
 
-        return json.loads(response.text)
-
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Gemini API error: {e}")
+        raise HTTPException(status_code=503, detail=f"{ai['aiProvider']} error: {e}")
 
 
 @app.get("/lm/test")
-async def lm_test(current_user: User = Depends(get_current_user)):
-    if not gemini_client:
-        raise HTTPException(status_code=503, detail="Gemini API key not configured")
+async def lm_test(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ai = _get_ai_settings(current_user.id, db)
     try:
-        gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents="Say 'ok'",
-            config={"max_output_tokens": 10},
-        )
-        return {"status": "connected", "model": "gemini-2.5-flash"}
+        if ai["aiProvider"] == "local":
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"{ai['localLmUrl'].rstrip('/')}/v1/models")
+                resp.raise_for_status()
+            return {"status": "connected", "model": ai["localLmModel"]}
+        else:
+            if not gemini_client:
+                raise HTTPException(status_code=503, detail="Gemini API key not configured")
+            gemini_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents="Say 'ok'",
+                config={"max_output_tokens": 10},
+            )
+            return {"status": "connected", "model": "gemini-2.5-flash"}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Gemini API error: {e}")
+        raise HTTPException(status_code=503, detail=f"Connection error: {e}")
 
 
 @app.get("/health")

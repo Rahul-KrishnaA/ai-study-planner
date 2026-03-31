@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, Moon, Sun, Trash2, Save, Bell, BellOff, Eye, EyeOff, LogOut, Lock, Database } from 'lucide-react';
+import { Settings, Moon, Sun, Trash2, Save, Bell, BellOff, Eye, EyeOff, LogOut, Lock, Database, Cpu, Cloud } from 'lucide-react';
 import { BottomNav } from '../components/BottomNav';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -9,6 +9,7 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { requestNotificationPermission, getNotificationPermission } from '../services/notifications';
 import { generateStudyPlan } from '../services/lmstudio';
+import { apiTestLmConnection } from '../services/api';
 import type { AuthError } from '../context/AuthContext';
 
 export function SettingsPage() {
@@ -33,6 +34,24 @@ export function SettingsPage() {
   const [regenerating, setRegenerating] = useState(false);
   const [regenStatus, setRegenStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const notifPermission = getNotificationPermission();
+
+  // AI provider state (local copies of settings for the form)
+  const [localLmUrl, setLocalLmUrl] = useState(settings.localLmUrl ?? 'http://127.0.0.1:1240');
+  const [localLmModel, setLocalLmModel] = useState(settings.localLmModel ?? 'qwen3.5-4b');
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+
+  async function handleTestConnection() {
+    updateSettings({ localLmUrl, localLmModel });
+    setTestStatus('testing');
+    try {
+      await apiTestLmConnection();
+      setTestStatus('ok');
+    } catch {
+      setTestStatus('fail');
+    } finally {
+      setTimeout(() => setTestStatus('idle'), 3000);
+    }
+  }
 
   async function handleSaveProfile() {
     if (!profile || !user) return;
@@ -165,11 +184,58 @@ export function SettingsPage() {
         {/* AI Engine */}
         <Card className="mb-4">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">AI Engine</p>
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-sm font-medium text-app-dark dark:text-white">Gemini 2.5 Flash</span>
+
+          {/* Provider toggle */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => updateSettings({ aiProvider: 'gemini' })}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                settings.aiProvider !== 'local'
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-white dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700'
+              }`}
+            >
+              <Cloud size={14} /> Gemini
+            </button>
+            <button
+              onClick={() => updateSettings({ aiProvider: 'local' })}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                settings.aiProvider === 'local'
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-white dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700'
+              }`}
+            >
+              <Cpu size={14} /> Local Model
+            </button>
           </div>
-          <p className="text-xs text-gray-400">Powered by Google Gemini AI. Plan generation uses AI when available, with local fallback.</p>
+
+          {settings.aiProvider === 'local' ? (
+            <div className="flex flex-col gap-3">
+              <Input
+                label="Local model URL"
+                value={localLmUrl}
+                onChange={(e) => setLocalLmUrl(e.target.value)}
+                placeholder="http://127.0.0.1:1240"
+              />
+              <Input
+                label="Model name"
+                value={localLmModel}
+                onChange={(e) => setLocalLmModel(e.target.value)}
+                placeholder="qwen3.5-4b"
+              />
+              <Button
+                size="sm"
+                onClick={handleTestConnection}
+                loading={testStatus === 'testing'}
+                variant={testStatus === 'ok' ? 'secondary' : testStatus === 'fail' ? 'danger' : 'primary'}
+              >
+                {testStatus === 'ok' ? 'Connected!' : testStatus === 'fail' ? 'Connection failed' : 'Save & Test'}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">Powered by Google Gemini 2.5 Flash. Requires GEMINI_API_KEY in backend/.env.</p>
+          )}
+
           {profile && (
             <Button onClick={handleRegenerate} size="sm" className="mt-3" loading={regenerating} variant={regenStatus === 'success' ? 'secondary' : 'primary'}>
               {regenStatus === 'success' ? 'Plan Updated!' : regenStatus === 'error' ? 'Failed — Retry' : 'Regenerate Plan'}
