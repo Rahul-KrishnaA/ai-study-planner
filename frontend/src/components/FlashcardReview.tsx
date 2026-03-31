@@ -56,13 +56,13 @@ export function FlashcardReview({ cards: initialCards, onDone }: FlashcardReview
       <div
         onClick={() => setFlipped(!flipped)}
         className="cursor-pointer select-none"
-        style={{ perspective: '1200px', minHeight: '250px' }}
+        style={{ perspective: '1200px', height: '260px' }}
       >
         <div
           style={{
             position: 'relative',
             width: '100%',
-            minHeight: '250px',
+            height: '100%',
             transformStyle: 'preserve-3d',
             transition: 'transform 0.55s cubic-bezier(0.4, 0.2, 0.2, 1)',
             transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
@@ -70,8 +70,12 @@ export function FlashcardReview({ cards: initialCards, onDone }: FlashcardReview
         >
           {/* Front face */}
           <div
-            style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
-            className="absolute inset-0 bg-white dark:bg-gray-800 rounded-2xl border-2 border-gray-100 dark:border-gray-700 p-6 flex flex-col items-center justify-center hover:border-primary/30 transition-colors"
+            style={{
+              position: 'absolute', inset: 0,
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+            }}
+            className="bg-white dark:bg-gray-800 rounded-2xl border-2 border-gray-100 dark:border-gray-700 p-6 flex flex-col items-center justify-center hover:border-primary/30 transition-colors"
           >
             <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Question</p>
             <p className="text-lg font-semibold text-app-dark dark:text-white text-center leading-relaxed">
@@ -85,11 +89,12 @@ export function FlashcardReview({ cards: initialCards, onDone }: FlashcardReview
           {/* Back face */}
           <div
             style={{
+              position: 'absolute', inset: 0,
               backfaceVisibility: 'hidden',
               WebkitBackfaceVisibility: 'hidden',
               transform: 'rotateY(180deg)',
             }}
-            className="absolute inset-0 bg-purple-bg dark:bg-primary/10 rounded-2xl border-2 border-primary/30 p-6 flex flex-col items-center justify-center"
+            className="bg-purple-bg dark:bg-primary/10 rounded-2xl border-2 border-primary/30 p-6 flex flex-col items-center justify-center"
           >
             <p className="text-xs text-primary mb-3 uppercase tracking-wide font-semibold">Answer</p>
             <p className="text-lg font-semibold text-app-dark dark:text-white text-center leading-relaxed">
