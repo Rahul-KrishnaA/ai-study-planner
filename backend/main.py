@@ -60,7 +60,15 @@ CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGI
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
+    # Allow localhost AND any private LAN IP (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    # so the app can be accessed from a phone on the same WiFi network.
+    allow_origin_regex=(
+        r"http://(localhost|127\.0\.0\.1"
+        r"|192\.168\.\d{1,3}\.\d{1,3}"
+        r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+        r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+        r")(:\d+)?"
+    ),
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],

@@ -3,7 +3,15 @@ import type { Note } from '../types/notes';
 import type { Flashcard } from '../types/flashcards';
 import type { AchievementRecord } from '../types/achievements';
 
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+// Auto-detect backend URL: when accessed from a phone on the same LAN,
+// use the same hostname as the frontend but port 8000.
+function resolveApiBase(): string {
+  if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE;
+  const h = window.location.hostname;
+  if (h === 'localhost' || h === '127.0.0.1') return 'http://127.0.0.1:8000';
+  return `http://${h}:8000`;
+}
+export const API_BASE = resolveApiBase();
 const TOKEN_KEY = 'sp_token';
 
 // ─── Token helpers ────────────────────────────────────────────────────────────
