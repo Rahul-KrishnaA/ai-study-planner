@@ -27,6 +27,32 @@ load_dotenv(Path(__file__).parent / ".env")
 # ─── App setup ────────────────────────────────────────────────────────────────
 Base.metadata.create_all(bind=engine)
 
+# ─── Schema migration (add missing columns to existing DB) ───────────────────
+def _migrate_schema():
+    """Add any columns that exist in the model but not yet in the DB."""
+    needed = [
+        ("notes_json",       "TEXT DEFAULT '[]'"),
+        ("flashcards_json",  "TEXT DEFAULT '[]'"),
+        ("xp",               "INTEGER DEFAULT 0"),
+        ("level",            "INTEGER DEFAULT 1"),
+        ("best_streak",      "INTEGER DEFAULT 0"),
+        ("streak_freezes",   "INTEGER DEFAULT 0"),
+        ("achievements_json","TEXT DEFAULT '[]'"),
+        ("weekly_goal_hours","INTEGER DEFAULT 10"),
+    ]
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.execute(
+            __import__("sqlalchemy").text("PRAGMA table_info(user_data)")
+        )}
+        for col_name, col_def in needed:
+            if col_name not in existing:
+                conn.execute(__import__("sqlalchemy").text(
+                    f"ALTER TABLE user_data ADD COLUMN {col_name} {col_def}"
+                ))
+        conn.commit()
+
+_migrate_schema()
+
 app = FastAPI(title="AI Study Planner API")
 
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []

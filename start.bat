@@ -1,9 +1,14 @@
 @echo off
-echo Starting backend in PowerShell...
-start "Backend" powershell -NoExit -NoProfile -ExecutionPolicy Bypass -Command "cd '%~dp0backend'; if (-not (Test-Path venv)) { python -m venv venv }; venv\Scripts\pip install -r requirements.txt --quiet; Write-Host 'Backend running on http://127.0.0.1:8000'; venv\Scripts\uvicorn main:app --reload --host 127.0.0.1 --port 8000"
+set "ROOT=%~dp0"
+set "BACKEND=%ROOT%backend"
+set "FRONTEND=%ROOT%frontend"
+
+echo Starting backend...
+start "Backend" powershell -NoExit -NoProfile -ExecutionPolicy Bypass -Command ^
+  "Set-Location '%BACKEND%'; if (-not (Test-Path venv)) { python -m venv venv }; venv\Scripts\pip install -r requirements.txt --quiet; Write-Host 'Backend running on http://127.0.0.1:8000'; venv\Scripts\uvicorn main:app --reload --host 127.0.0.1 --port 8000"
 
 echo Starting frontend...
-cd /d "%~dp0frontend"
+cd /d "%FRONTEND%"
 if not exist node_modules (
     echo Installing frontend dependencies...
     npm install

@@ -78,9 +78,16 @@ interface AppProviderProps {
   userId: string;
 }
 
-export function AppProvider({ children, userId: _userId }: AppProviderProps) {
-  const [profile, setProfileState] = useState<UserProfile | null>(null);
-  const [plan, setPlanState] = useState<StudyPlan | null>(null);
+export function AppProvider({ children, userId }: AppProviderProps) {
+  const profileCacheKey = `sp_${userId}_profile_cache`;
+  const planCacheKey = `sp_${userId}_plan_cache`;
+
+  const [profile, setProfileState] = useState<UserProfile | null>(() => {
+    try { return JSON.parse(localStorage.getItem(profileCacheKey) ?? 'null'); } catch { return null; }
+  });
+  const [plan, setPlanState] = useState<StudyPlan | null>(() => {
+    try { return JSON.parse(localStorage.getItem(planCacheKey) ?? 'null'); } catch { return null; }
+  });
   const [sessions, setSessionsState] = useState<TrackedSession[]>([]);
   const [settings, setSettingsState] = useState<AppSettings>(defaultSettings);
   const [streak, setStreak] = useState<number>(0);
@@ -118,11 +125,15 @@ export function AppProvider({ children, userId: _userId }: AppProviderProps) {
             })),
           } : data.profile;
           setProfileState(migratedProfile);
+          localStorage.setItem(profileCacheKey, JSON.stringify(migratedProfile));
           if (needsMigration) {
             apiSaveProfile(migratedProfile).catch(console.error);
           }
         }
-        if (data.plan) setPlanState(data.plan);
+        if (data.plan) {
+          setPlanState(data.plan);
+          localStorage.setItem(planCacheKey, JSON.stringify(data.plan));
+        }
         setSessionsState(data.sessions ?? []);
         setNotesState(data.notes ?? []);
         setFlashcardsState(data.flashcards ?? []);
@@ -225,13 +236,15 @@ export function AppProvider({ children, userId: _userId }: AppProviderProps) {
 
   const setProfile = useCallback((p: UserProfile) => {
     setProfileState(p);
+    localStorage.setItem(profileCacheKey, JSON.stringify(p));
     apiSaveProfile(p).catch(console.error);
-  }, []);
+  }, [profileCacheKey]);
 
   const setPlan = useCallback((p: StudyPlan) => {
     setPlanState(p);
+    localStorage.setItem(planCacheKey, JSON.stringify(p));
     apiSavePlan(p).catch(console.error);
-  }, []);
+  }, [planCacheKey]);
 
   const addSession = useCallback(
     (session: TrackedSession) => {
@@ -369,6 +382,8 @@ export function AppProvider({ children, userId: _userId }: AppProviderProps) {
 
   const resetAll = useCallback(() => {
     apiResetData().catch(console.error);
+    localStorage.removeItem(profileCacheKey);
+    localStorage.removeItem(planCacheKey);
     setProfileState(null);
     setPlanState(null);
     setSessionsState([]);
