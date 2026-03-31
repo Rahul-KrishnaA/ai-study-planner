@@ -1,8 +1,6 @@
 import { useState } from 'react';
-import { RotateCcw, ThumbsDown, Minus, ThumbsUp, ArrowLeft } from 'lucide-react';
+import { RotateCcw, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from './Button';
-import { useApp } from '../context/AppContext';
-import { rateCard, type Rating } from '../services/spacedRepetition';
 import type { Flashcard } from '../types/flashcards';
 
 interface FlashcardReviewProps {
@@ -10,35 +8,39 @@ interface FlashcardReviewProps {
   onDone: () => void;
 }
 
-export function FlashcardReview({ cards: initialCards, onDone }: FlashcardReviewProps) {
-  const { updateFlashcard } = useApp();
-  const [queue, setQueue] = useState<Flashcard[]>(initialCards);
+export function FlashcardReview({ cards, onDone }: FlashcardReviewProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
-  const [reviewed, setReviewed] = useState(0);
 
-  if (queue.length === 0 || currentIndex >= queue.length) {
+  if (cards.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-lg font-bold text-app-dark dark:text-white mb-1">Review Complete!</p>
-        <p className="text-sm text-gray-500 mb-4">{reviewed} card{reviewed !== 1 ? 's' : ''} reviewed</p>
+        <p className="text-lg font-bold text-app-dark dark:text-white mb-1">No cards to review</p>
         <Button onClick={onDone}>Back to Flashcards</Button>
       </div>
     );
   }
 
-  const card = queue[currentIndex];
+  if (currentIndex >= cards.length) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-lg font-bold text-app-dark dark:text-white mb-1">Review Complete!</p>
+        <p className="text-sm text-gray-500 mb-4">{cards.length} card{cards.length !== 1 ? 's' : ''} reviewed</p>
+        <Button onClick={onDone}>Back to Flashcards</Button>
+      </div>
+    );
+  }
 
-  function handleRate(rating: Rating) {
-    const { interval, easeFactor, nextReviewDate } = rateCard(card, rating);
-    updateFlashcard(card.id, { interval, easeFactor, nextReviewDate });
-    setReviewed((r) => r + 1);
+  const card = cards[currentIndex];
+
+  function goNext() {
     setFlipped(false);
-
-    if (rating === 'again') {
-      setQueue((prev) => [...prev, { ...card, interval, easeFactor, nextReviewDate }]);
-    }
     setCurrentIndex((i) => i + 1);
+  }
+
+  function goPrev() {
+    setFlipped(false);
+    setCurrentIndex((i) => Math.max(0, i - 1));
   }
 
   return (
@@ -48,7 +50,7 @@ export function FlashcardReview({ cards: initialCards, onDone }: FlashcardReview
           <ArrowLeft size={16} /> Back
         </button>
         <p className="text-xs text-gray-400">
-          {currentIndex + 1} / {queue.length}
+          {currentIndex + 1} / {cards.length}
         </p>
       </div>
 
@@ -104,34 +106,22 @@ export function FlashcardReview({ cards: initialCards, onDone }: FlashcardReview
         </div>
       </div>
 
-      {flipped && (
-        <div className="grid grid-cols-3 gap-3 mt-4">
-          <button
-            onClick={() => handleRate('again')}
-            className="flex flex-col items-center gap-1 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
-          >
-            <ThumbsDown size={20} />
-            <span className="text-xs font-semibold">Again</span>
-            <span className="text-xs text-red-400">Now</span>
-          </button>
-          <button
-            onClick={() => handleRate('hard')}
-            className="flex flex-col items-center gap-1 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
-          >
-            <Minus size={20} />
-            <span className="text-xs font-semibold">Hard</span>
-            <span className="text-xs text-amber-400">1d</span>
-          </button>
-          <button
-            onClick={() => handleRate('easy')}
-            className="flex flex-col items-center gap-1 py-3 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
-          >
-            <ThumbsUp size={20} />
-            <span className="text-xs font-semibold">Easy</span>
-            <span className="text-xs text-green-400">{Math.round(Math.max(card.interval * card.easeFactor, 3))}d</span>
-          </button>
-        </div>
-      )}
+      <div className="flex items-center justify-between mt-4">
+        <button
+          onClick={goPrev}
+          disabled={currentIndex === 0}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-semibold text-sm disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        >
+          <ChevronLeft size={18} /> Previous
+        </button>
+        <span className="text-xs text-gray-400">{currentIndex + 1} / {cards.length}</span>
+        <button
+          onClick={goNext}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white font-semibold text-sm hover:bg-primary/90 transition-colors"
+        >
+          {currentIndex === cards.length - 1 ? 'Finish' : 'Next'} <ChevronRight size={18} />
+        </button>
+      </div>
     </div>
   );
 }
