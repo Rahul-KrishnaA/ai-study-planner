@@ -36,7 +36,6 @@ export function FlashcardReview({ cards: initialCards, onDone }: FlashcardReview
     setFlipped(false);
 
     if (rating === 'again') {
-      // Re-queue card at end for same-session re-review
       setQueue((prev) => [...prev, { ...card, interval, easeFactor, nextReviewDate }]);
     }
     setCurrentIndex((i) => i + 1);
@@ -53,21 +52,51 @@ export function FlashcardReview({ cards: initialCards, onDone }: FlashcardReview
         </p>
       </div>
 
+      {/* 3D flip card */}
       <div
         onClick={() => setFlipped(!flipped)}
-        className="min-h-[250px] bg-white dark:bg-gray-800 rounded-2xl border-2 border-gray-100 dark:border-gray-700 p-6 flex flex-col items-center justify-center cursor-pointer select-none transition-all hover:border-primary/30"
+        className="cursor-pointer select-none"
+        style={{ perspective: '1200px', minHeight: '250px' }}
       >
-        <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide">
-          {flipped ? 'Answer' : 'Question'}
-        </p>
-        <p className="text-lg font-semibold text-app-dark dark:text-white text-center leading-relaxed">
-          {flipped ? card.back : card.front}
-        </p>
-        {!flipped && (
-          <p className="text-xs text-gray-300 dark:text-gray-600 mt-4 flex items-center gap-1">
-            <RotateCcw size={12} /> Tap to reveal
-          </p>
-        )}
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            minHeight: '250px',
+            transformStyle: 'preserve-3d',
+            transition: 'transform 0.55s cubic-bezier(0.4, 0.2, 0.2, 1)',
+            transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+          }}
+        >
+          {/* Front face */}
+          <div
+            style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+            className="absolute inset-0 bg-white dark:bg-gray-800 rounded-2xl border-2 border-gray-100 dark:border-gray-700 p-6 flex flex-col items-center justify-center hover:border-primary/30 transition-colors"
+          >
+            <p className="text-xs text-gray-400 mb-3 uppercase tracking-wide">Question</p>
+            <p className="text-lg font-semibold text-app-dark dark:text-white text-center leading-relaxed">
+              {card.front}
+            </p>
+            <p className="text-xs text-gray-300 dark:text-gray-600 mt-4 flex items-center gap-1">
+              <RotateCcw size={12} /> Tap to reveal
+            </p>
+          </div>
+
+          {/* Back face */}
+          <div
+            style={{
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+              transform: 'rotateY(180deg)',
+            }}
+            className="absolute inset-0 bg-purple-bg dark:bg-primary/10 rounded-2xl border-2 border-primary/30 p-6 flex flex-col items-center justify-center"
+          >
+            <p className="text-xs text-primary mb-3 uppercase tracking-wide font-semibold">Answer</p>
+            <p className="text-lg font-semibold text-app-dark dark:text-white text-center leading-relaxed">
+              {card.back}
+            </p>
+          </div>
+        </div>
       </div>
 
       {flipped && (

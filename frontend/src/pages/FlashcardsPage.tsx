@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Layers } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Layers, Sparkles } from 'lucide-react';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { FlashcardReview } from '../components/FlashcardReview';
 import { useApp } from '../context/AppContext';
 import { isDueToday, isMastered, getReviewStats } from '../services/spacedRepetition';
+import { apiGenerateFlashcards } from '../services/api';
 import type { Flashcard } from '../types/flashcards';
 
 export function FlashcardsPage() {
@@ -15,13 +16,21 @@ export function FlashcardsPage() {
 
   const { profile, flashcards, addFlashcard, deleteFlashcard } = useApp();
   const [showCreate, setShowCreate] = useState(false);
+  const [showGenerate, setShowGenerate] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(filterSubjectId);
 
+  // Manual create state
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
   const [cardSubjectId, setCardSubjectId] = useState(filterSubjectId ?? profile?.subjectDetails[0]?.id ?? '');
   const [createError, setCreateError] = useState('');
+
+  // AI generate state
+  const [genSubjectId, setGenSubjectId] = useState(filterSubjectId ?? profile?.subjectDetails[0]?.id ?? '');
+  const [genCount, setGenCount] = useState<5 | 10 | 15>(10);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState('');
 
   if (!profile) return null;
 
@@ -57,6 +66,34 @@ export function FlashcardsPage() {
     setBack('');
     setCreateError('');
     setShowCreate(false);
+  }
+
+  async function handleGenerate() {
+    const subject = subjects.find((s) => s.id === genSubjectId);
+    if (!subject) return;
+    setGenerating(true);
+    setGenError('');
+    try {
+      const pairs = await apiGenerateFlashcards(subject.name, genCount);
+      const today = new Date().toISOString().split('T')[0];
+      pairs.forEach((p) => {
+        addFlashcard({
+          id: crypto.randomUUID(),
+          subjectId: genSubjectId,
+          front: p.front,
+          back: p.back,
+          nextReviewDate: today,
+          interval: 0,
+          easeFactor: 2.5,
+          createdAt: new Date().toISOString(),
+        });
+      });
+      setShowGenerate(false);
+    } catch {
+      setGenError('AI generation failed. Check your AI provider in Settings.');
+    } finally {
+      setGenerating(false);
+    }
   }
 
   if (reviewMode) {
@@ -129,23 +166,31 @@ export function FlashcardsPage() {
           </Button>
         )}
 
-        {/* Card list */}
+        {/* Card list header */}
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
             Cards ({filtered.length})
           </p>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="text-xs text-primary font-semibold flex items-center gap-1"
-          >
-            <Plus size={12} /> New Card
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowGenerate(true)}
+              className="text-xs text-primary font-semibold flex items-center gap-1"
+            >
+              <Sparkles size={12} /> Generate with AI
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="text-xs text-primary font-semibold flex items-center gap-1"
+            >
+              <Plus size={12} /> New Card
+            </button>
+          </div>
         </div>
 
         {filtered.length === 0 ? (
           <Card>
             <p className="text-sm text-gray-400 text-center py-4">
-              No flashcards yet. Create one to get started!
+              No flashcards yet. Create one or generate with AI!
             </p>
           </Card>
         ) : (
@@ -180,7 +225,7 @@ export function FlashcardsPage() {
         )}
       </div>
 
-      {/* Create modal */}
+      {/* Manual create modal */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center" onClick={() => setShowCreate(false)}>
           <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-t-3xl p-6" onClick={(e) => e.stopPropagation()}>
@@ -221,6 +266,63 @@ export function FlashcardsPage() {
             <div className="flex gap-3">
               <Button variant="ghost" onClick={() => setShowCreate(false)} className="flex-1">Cancel</Button>
               <Button onClick={handleCreate} className="flex-grow">Create Card</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI generate modal */}
+      {showGenerate && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center" onClick={() => { if (!generating) setShowGenerate(false); }}>
+          <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-t-3xl p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles size={18} className="text-primary" />
+              <h3 className="text-lg font-bold text-app-dark dark:text-white">Generate Flashcards with AI</h3>
+            </div>
+
+            {/* Subject */}
+            <div className="mb-4">
+              <label className="text-xs text-gray-500 mb-1.5 block">Subject</label>
+              <select
+                value={genSubjectId}
+                onChange={(e) => setGenSubjectId(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-app-dark dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Count selector */}
+            <div className="mb-5">
+              <label className="text-xs text-gray-500 mb-1.5 block">How many cards?</label>
+              <div className="flex gap-3">
+                {([5, 10, 15] as const).map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setGenCount(n)}
+                    className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 transition-colors ${
+                      genCount === n
+                        ? 'bg-primary text-white border-primary'
+                        : 'bg-white dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {genError && <p className="text-xs text-red-500 mb-3">{genError}</p>}
+
+            <div className="flex gap-3">
+              <Button variant="ghost" onClick={() => setShowGenerate(false)} className="flex-1" disabled={generating}>
+                Cancel
+              </Button>
+              <Button onClick={handleGenerate} className="flex-grow" loading={generating}>
+                {generating ? 'Generating…' : `Generate ${genCount} Cards`}
+              </Button>
             </div>
           </div>
         </div>

@@ -241,3 +241,13 @@ export async function apiGenerateInsights(
 export async function apiTestLmConnection(): Promise<{ status: string; model: string }> {
   return request('/lm/test');
 }
+
+export async function apiGenerateFlashcards(
+  subjectName: string,
+  count: number,
+): Promise<{ front: string; back: string }[]> {
+  return request('/lm/generate-flashcards', {
+    method: 'POST',
+    body: JSON.stringify({ subject_name: subjectName, count }),
+  });
+}

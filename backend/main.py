@@ -171,6 +171,11 @@ class LMGenerateInsightsRequest(BaseModel):
     sessions: list
 
 
+class LMGenerateFlashcardsRequest(BaseModel):
+    subject_name: str
+    count: int
+
+
 # ─── Auth endpoints ───────────────────────────────────────────────────────────
 @app.post("/auth/register")
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
@@ -588,6 +593,45 @@ async def lm_test(
         raise
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Connection error: {e}")
+
+
+@app.post("/lm/generate-flashcards")
+async def lm_generate_flashcards(
+    req: LMGenerateFlashcardsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ai = _get_ai_settings(current_user.id, db)
+
+    prompt = (
+        f"Generate exactly {req.count} flashcard question-answer pairs for the subject: {req.subject_name}.\n"
+        "Make questions focused, clear and educational. Vary difficulty from basic to advanced.\n"
+        "Return ONLY a valid JSON array, no markdown, no extra text:\n"
+        '[{"front":"question text","back":"answer text"}]'
+    )
+
+    try:
+        if ai["aiProvider"] == "local":
+            raw = await _call_local_lm(ai["localLmUrl"], ai["localLmModel"], prompt, max_tokens=2048)
+            cards = json.loads(_extract_json(raw))
+        else:
+            if not gemini_client:
+                raise HTTPException(status_code=503, detail="Gemini API key not configured")
+            response = gemini_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config={"temperature": 0.8, "max_output_tokens": 2048, "response_mime_type": "application/json"},
+            )
+            cards = json.loads(response.text)
+
+        if not isinstance(cards, list):
+            raise ValueError("Expected a JSON array")
+        return cards[:req.count]  # cap to requested count
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"{ai['aiProvider']} error: {e}")
 
 
 @app.get("/health")
