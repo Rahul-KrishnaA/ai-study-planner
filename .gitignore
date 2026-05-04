@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+CLAUDE.md
+.claude/
+.vite/
+backend/study_planner.db
+backend/venv/
+__pycache__/
+*.pyc
